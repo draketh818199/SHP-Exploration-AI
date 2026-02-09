@@ -1,4 +1,4 @@
-import gym
+import Gymnasium as gym
 import numpy as np
 import tensorflow as tf
 import threading
