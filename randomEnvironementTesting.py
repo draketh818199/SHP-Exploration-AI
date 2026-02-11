@@ -1,4 +1,5 @@
 import gymnasium as gym
+import time
 
 # Create our training environment - a cart with a pole that needs balancing
 env = gym.make("CartPole-v1", render_mode="human")
@@ -28,6 +29,7 @@ while not episode_over:
 
     total_reward += reward
     episode_over = terminated or truncated
+    time.sleep(.05)
 
 print(f"Episode finished! Total reward: {total_reward}")
 env.close()
