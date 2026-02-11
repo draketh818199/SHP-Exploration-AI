@@ -1,116 +1,167 @@
-import Gymnasium as gym
-import numpy as np
-import tensorflow as tf
-import threading
+# Code is heavily inspired by Morvan Zhou's code. Please check out
+# his work at github.com/MorvanZhou/pytorch-A3C
+import gym
+import torch as T
+import torch.multiprocessing as mp
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.distributions import Categorical
 
+class SharedAdam(T.optim.Adam):
+    def __init__(self, params, lr=1e-3, betas=(0.9, 0.99), eps=1e-8,
+            weight_decay=0):
+        super(SharedAdam, self).__init__(params, lr=lr, betas=betas, eps=eps,
+                weight_decay=weight_decay)
 
-num_threads = 4
-max_episodes = 10000
-gamma = .99
-learning_rate = 0.01
-entropy_beta=0.01
+        for group in self.param_groups:
+            for p in group['params']:
+                state = self.state[p]
+                state['step'] = 0
+                state['exp_avg'] = T.zeros_like(p.data)
+                state['exp_avg_sq'] = T.zeros_like(p.data)
 
+                state['exp_avg'].share_memory_()
+                state['exp_avg_sq'].share_memory_()
 
-env_name ='CartPole-v1'
-env = gym.make(env_name)
-state_size = env.observation_space.shape[0]
-action_size = env.action_space.n
+class ActorCritic(nn.Module):
+    def __init__(self, input_dims, n_actions, gamma=0.99):
+        super(ActorCritic, self).__init__()
 
+        self.gamma = gamma
 
-global_model = tf.keras.Sequential([tf.keras.layers.Dense(32, activation='relu', input_shape=(state_size,)),
-                                   tf.keras.layers.Dense(action_size, activation='softmax')])
-global_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate), loss='categorical_crossentropy')
+        self.pi1 = nn.Linear(*input_dims, 128)
+        self.v1 = nn.Linear(*input_dims, 128)
+        self.pi = nn.Linear(128, n_actions)
+        self.v = nn.Linear(128, 1)
 
+        self.rewards = []
+        self.actions = []
+        self.states = []
 
+    def remember(self, state, action, reward):
+        self.states.append(state)
+        self.actions.append(action)
+        self.rewards.append(reward)
 
-class Worker(threading.Thread):
-    def __init__(self, thread_id, global_model):
-        super(Worker, self).__init__()
-        self.thread_id = thread_id
-        self.global_model = global_model
-        self.env = gym.make(env_name)
-        self.state_size = state_size
-        self.action_size = action_size
-        
-        self.local_network = tf.keras.Sequential([tf.keras.layers.Dense(32, activation='relu', input_shape=(state_size,)),
-                                   tf.keras.layers.Dense(action_size, activation='softmax')])
-        
-        self.local_network.set_weights(self.global_model.get_weights())
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-        
-        
-    def run(self):
-        for episode in range(max_episodes):
-            state = self.env.reset()
-            done = False
-            episode_states = []
-            episode_actions = []
-            episode_rewards = []
-            episode_reward = 0
-            
-            while not done:
-                logits = self.local_network(tf.convert_to_tensor([state], dtype=tf.float32))
-                action = np.random.choice(action_size, p = np.squeeze(logits.numpy()))
-                
-                
-                next_state, reward, done, _ = self.env.step(action)
-                episode_reward += reward
-                
-                episode_states.append(state)
-                episode_actions.append(action)
-                episode_rewards.append(reward)
-                
-                state = next_state
-                
-                if done:
-                    discounted_rewards = self.discounted_rewards(episode_rewards)
-                    
-                    self.update_global(episode_states, episode_actions, discounted_rewards)
-                    self.local_network.set_weights(self.global_model.get_weights())
-                    print("Thread:", self.thread_id, "Episode:", episode, "Reward:", episode_reward)
-                    break
-                    
-    def discounted_rewards(self, rewards):
-        discounted_rewards = np.zeros_like(rewards)
-        running_total = 0
-        for i in reversed(range(len(rewards))):
-            running_total = running_total* gamma + rewards[i]
-            discounted_rewards[i] = running_total
-        return discounted_rewards
+    def clear_memory(self):
+        self.states = []
+        self.actions = []
+        self.rewards = []
 
+    def forward(self, state):
+        pi1 = F.relu(self.pi1(state))
+        v1 = F.relu(self.v1(state))
 
-    def update_global(self, states, actions, discounted_rewards):
-        with tf.GradientTape() as tape:
-            total_loss = self.calculate_t_loss(states, actions, discounted_rewards)
-        gradients = tape.gradient(total_loss, self.local_network.trainable_variables)
-        self.optimizer.apply_gradients(zip(gradients, self.local_network.trainable_variables))
+        pi = self.pi(pi1)
+        v = self.v(v1)
 
-    def calculate_t_loss(self, states, actions, discounted_rewards):
-        states = tf.convert_to_tensor(states, dtype=tf.float32)
-        actions = tf.convert_to_tensor(actions, dtype=tf.float32)
-        discounted_rewards = tf.convert_to_tensor(discounted_rewards, dtype=tf.float32)
-        
-        
-        logits = self.local_network(states)
-        probs = tf.nn.softmax(logits)
-        
-        cross_entropy = tf.keras.losses.sparse_categorical_crossentropy(actions, logits, from_logits=True)
-        policy_loss = tf.reduce_mean(cross_entropy * discounted_rewards)
-        
-        values = self.local_network(states)
-        value_loss = tf.reduce_mean(tf.square(discounted_rewards - values))
-        
-        entropy_loss = tf.reduce_mean(tf.reduce_mean(probs * tf.math.log(probs), axis=1))
-        total_loss = -policy_loss + 0.5 * value_loss - 0.01 * entropy_loss
+        return pi, v
+
+    def calc_R(self, done):
+        states = T.tensor(self.states, dtype=T.float)
+        _, v = self.forward(states)
+
+        R = v[-1]*(1-int(done))
+
+        batch_return = []
+        for reward in self.rewards[::-1]:
+            R = reward + self.gamma*R
+            batch_return.append(R)
+        batch_return.reverse()
+        batch_return = T.tensor(batch_return, dtype=T.float)
+
+        return batch_return
+
+    def calc_loss(self, done):
+        states = T.tensor(self.states, dtype=T.float)
+        actions = T.tensor(self.actions, dtype=T.float)
+
+        returns = self.calc_R(done)
+
+        pi, values = self.forward(states)
+        values = values.squeeze()
+        critic_loss = (returns-values)**2
+
+        probs = T.softmax(pi, dim=1)
+        dist = Categorical(probs)
+        log_probs = dist.log_prob(actions)
+        actor_loss = -log_probs*(returns-values)
+
+        total_loss = (critic_loss + actor_loss).mean()
+    
         return total_loss
-    
-workers = []
-for i in range(num_threads):
-    worker = Worker(i, global_model)
-    workers.append(worker)
-    
-for worker in workers:
-    worker.start()
-    
-for worker in workers:
-    worker.join()
+
+    def choose_action(self, observation):
+        state = T.tensor([observation], dtype=T.float)
+        pi, v = self.forward(state)
+        probs = T.softmax(pi, dim=1)
+        dist = Categorical(probs)
+        action = dist.sample().numpy()[0]
+
+        return action
+
+class Agent(mp.Process):
+    def __init__(self, global_actor_critic, optimizer, input_dims, n_actions, 
+                gamma, lr, name, global_ep_idx, env_id):
+        super(Agent, self).__init__()
+        self.local_actor_critic = ActorCritic(input_dims, n_actions, gamma)
+        self.global_actor_critic = global_actor_critic
+        self.name = 'w%02i' % name
+        self.episode_idx = global_ep_idx
+        self.env = gym.make(env_id)
+        self.optimizer = optimizer
+
+    def run(self):
+        t_step = 1
+        while self.episode_idx.value < N_GAMES:
+            done = False
+            observation = self.env.reset()
+            score = 0
+            self.local_actor_critic.clear_memory()
+            while not done:
+                action = self.local_actor_critic.choose_action(observation)
+                observation_, reward, done, info = self.env.step(action)
+                score += reward
+                self.local_actor_critic.remember(observation, action, reward)
+                if t_step % T_MAX == 0 or done:
+                    loss = self.local_actor_critic.calc_loss(done)
+                    self.optimizer.zero_grad()
+                    loss.backward()
+                    for local_param, global_param in zip(
+                            self.local_actor_critic.parameters(),
+                            self.global_actor_critic.parameters()):
+                        global_param._grad = local_param.grad
+                    self.optimizer.step()
+                    self.local_actor_critic.load_state_dict(
+                            self.global_actor_critic.state_dict())
+                    self.local_actor_critic.clear_memory()
+                t_step += 1
+                observation = observation_
+            with self.episode_idx.get_lock():
+                self.episode_idx.value += 1
+            print(self.name, 'episode ', self.episode_idx.value, 'reward %.1f' % score)
+
+if __name__ == '__main__':
+    lr = 1e-4
+    env_id = 'CartPole-v0'
+    n_actions = 2
+    input_dims = [4]
+    N_GAMES = 3000
+    T_MAX = 5
+    global_actor_critic = ActorCritic(input_dims, n_actions)
+    global_actor_critic.share_memory()
+    optim = SharedAdam(global_actor_critic.parameters(), lr=lr, 
+                        betas=(0.92, 0.999))
+    global_ep = mp.Value('i', 0)
+
+    workers = [Agent(global_actor_critic,
+                    optim,
+                    input_dims,
+                    n_actions,
+                    gamma=0.99,
+                    lr=lr,
+                    name=i,
+                    global_ep_idx=global_ep,
+                    env_id=env_id) for i in range(mp.cpu_count())]
+    [w.start() for w in workers]
+    [w.join() for w in workers]
