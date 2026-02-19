@@ -9,7 +9,7 @@ class GridVisionEnv(gym.Env):
 
     metadata = {"render_modes": ["human"]}
 
-    def __init__(self, map_layout, vision_radius=3, render_mode=None):
+    def __init__(self, map_layout=None, vision_radius=3, render_mode=None):
         super().__init__()
 
         self.original_map = map_layout
@@ -20,6 +20,10 @@ class GridVisionEnv(gym.Env):
 
         # Actions: up, down, left, right
         self.action_space = spaces.Discrete(4)
+
+        if (map_layout == None):
+            from environmentControl import MAP0
+            map_layout = MAP0
 
         # Observation: visible square around player
         view_size = 2 * vision_radius + 1
