@@ -4,10 +4,8 @@ import PettingZooEnvironement
 # for testing
 from pettingzoo.butterfly import cooperative_pong_v5
 
-# Create our training environment - a cart with a pole that needs balancing
-#env = gym.make("GridMapEnv-v0", render_mode="human")
 
-# create petting zoo environement
+# create petting zoo environement (render_mode="human") to enable visuals
 env = PettingZooEnvironement.env(render_mode="human")
 
 # Reset environment to start a new episode
@@ -24,16 +22,23 @@ while not episode_over:
         action = None
 
     else:
+        # env.action_space is the list of all actions . sample gets a random action
         action = env.action_space(agent).sample()  # Random action for now - real agents will be smarter!
 
+    # tells the environment that agent prefeomres action
     actions = {agent: action}
-    print(action)
+    # displays visual if enabled
+    env.render()
+    # gets output from enironment (most not used currently)
     observation, reward, terminated, truncated, info = env.step(actions)
 
+    # sums reward
     total_reward += reward[agent]
+    # Ends Session
     episode_over = terminated[agent] or truncated[agent]
-    time.sleep(.05)
 
+#final output
 print(f"Episode finished! Total reward: {total_reward}")
 print(truncated, terminated)
+# important to close environment
 env.close()

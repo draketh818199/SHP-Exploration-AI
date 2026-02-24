@@ -1,9 +1,17 @@
 import copy
 import math
 import numpy as np
+import pygame
 
 from pettingzoo import ParallelEnv
 from gymnasium import spaces
+
+# =========================
+# Improvements needed
+# =========================
+# larger map & more map option (probably in another file maybe procedural)
+# improved reward function
+# maybe add continuous movement 
 
 
 # =========================
@@ -23,6 +31,13 @@ MAP0 = [
     ["███","███","███","███"," O ","███","███","███","███","███"]
 ]
 
+# =========================
+# Constant Variables
+# =========================
+
+RENDER_FPS = 10
+MAX_STEPS = 200
+
 
 # =========================
 # PETTINGZOO ENVIRONMENT
@@ -35,7 +50,7 @@ class env(ParallelEnv):
         "name": "GridMapEnv_v0"
     }
 
-    def __init__(self, vision_radius=3, render_mode=None, max_steps = 200):
+    def __init__(self, vision_radius=3, render_mode=None, max_steps = MAX_STEPS):
 
         # Single agent setup
         self.max_steps = max_steps
@@ -120,6 +135,7 @@ class env(ParallelEnv):
         x, y = self.player_pos
         nx, ny = x + dx, y + dy
 
+        #add more complex reward function here
         reward = -0.01
         terminated = False
 
@@ -200,9 +216,53 @@ class env(ParallelEnv):
     def render(self):
 
         if self.render_mode == "human":
-            for row in self.grid:
-                print("".join(row))
-            print()
+            tile_size = 40
+
+            if not hasattr(self, "_pygame_initialized"):
+                pygame.init()
+                self.window_size = self.size * tile_size
+                self.screen = pygame.display.set_mode(
+                    (self.window_size, self.window_size)
+                )
+                pygame.display.set_caption("GridMapEnv")
+                self.clock = pygame.time.Clock()
+                self._pygame_initialized = True
+
+            # Handle window close events
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+
+            # Build RGB array (same as before)
+            img = np.zeros(
+                (self.size * tile_size,
+                self.size * tile_size,
+                3),
+                dtype=np.uint8
+            )
+
+            color_map = {
+                "███": (50, 50, 50),
+                "   ": (255, 255, 255),
+                " G ": (0, 255, 0),
+                " P ": (0, 0, 255),
+            }
+
+            for r in range(self.size):
+                for c in range(self.size):
+                    color = color_map[self.grid[r][c]]
+                    img[
+                        r*tile_size:(r+1)*tile_size,
+                        c*tile_size:(c+1)*tile_size
+                    ] = color
+
+            # Convert numpy array to pygame surface
+            surface = pygame.surfarray.make_surface(img.swapaxes(0, 1))
+
+            self.screen.blit(surface, (0, 0))
+            pygame.display.flip()
+
+            self.clock.tick(RENDER_FPS)  # control FPS
 
         elif self.render_mode == "rgb_array":
             tile_size = 20
