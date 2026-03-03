@@ -1,12 +1,12 @@
 import gymnasium as gym
 import time
-import PettingZooEnvironement
+import environement.PettingZooEnvironement
 # for testing
 from pettingzoo.butterfly import cooperative_pong_v5
 
 
 # create petting zoo environement (render_mode="human") to enable visuals
-env = PettingZooEnvironement.env(render_mode="human")
+env = environement.PettingZooEnvironement.env(render_mode="human")
 
 # Reset environment to start a new episode
 observation, reward, terminated, truncated, info = env.reset()

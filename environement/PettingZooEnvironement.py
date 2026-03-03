@@ -11,7 +11,7 @@ from gymnasium import spaces
 # =========================
 # larger map & more map option (probably in another file maybe procedural)
 # improved reward function
-# maybe add continuous movement 
+# maybe add continuous movement & ray vision
 
 
 # =========================
@@ -35,7 +35,7 @@ MAP0 = [
 # Constant Variables
 # =========================
 
-RENDER_FPS = 10
+RENDER_FPS = 30
 MAX_STEPS = 200
 
 
@@ -129,7 +129,7 @@ class env(ParallelEnv):
             1: (1, 0),   # down
             2: (0, -1),  # left
             3: (0, 1),   # right
-        }
+        }  
 
         dx, dy = dx_dy[action]
         x, y = self.player_pos

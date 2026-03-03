@@ -1,11 +1,22 @@
 # Code is heavily inspired by Morvan Zhou's code. Please check out
 # his work at github.com/MorvanZhou/pytorch-A3C
-import gymnasium as gym
+
+
+# =========================
+# Improvements needed
+# =========================
+# change outputs to be a dict of all agents
+# finish connecting agents to petting zoo environement
+
 import torch as T
 import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
+import environement.PettingZooEnvironement
+
+N_GAMES = 3
+T_MAX = 5
 
 class SharedAdam(T.optim.Adam):
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.99), eps=1e-8,
@@ -92,7 +103,8 @@ class ActorCritic(nn.Module):
         return total_loss
 
     def choose_action(self, observation):
-        state = T.tensor([observation], dtype=T.float)
+        state = T.tensor(observation["agent_0"], dtype = T.float32)
+        state = state.view(1, -1) #flattens input array to be one dimension
         pi, v = self.forward(state)
         probs = T.softmax(pi, dim=1)
         dist = Categorical(probs)
@@ -106,21 +118,23 @@ class Agent(mp.Process):
         super(Agent, self).__init__()
         self.local_actor_critic = ActorCritic(input_dims, n_actions, gamma)
         self.global_actor_critic = global_actor_critic
-        self.name = 'w%02i' % name
+        self.name = 'agent_0'
         self.episode_idx = global_ep_idx
-        self.env = gym.make(env_id)
+        self.env = environement.PettingZooEnvironement.env(render_mode="human")
         self.optimizer = optimizer
 
     def run(self):
         t_step = 1
         while self.episode_idx.value < N_GAMES:
-            done = False
-            observation = self.env.reset()
+            observation, reward, terminated, truncated, info = self.env.reset()
             score = 0
             self.local_actor_critic.clear_memory()
-            while not done:
+            terminated = False
+            truncated = False
+            while not terminated or not truncated:
                 action = self.local_actor_critic.choose_action(observation)
-                observation_, reward, done, info = self.env.step(action)
+                observation_, reward, terminated, truncated, info = self.env.step(action)
+                done = terminated or truncated
                 score += reward
                 self.local_actor_critic.remember(observation, action, reward)
                 if t_step % T_MAX == 0 or done:
@@ -145,9 +159,7 @@ if __name__ == '__main__':
     lr = 1e-4
     env_id = 'CartPole-v0'
     n_actions = 2
-    input_dims = [4]
-    N_GAMES = 3000
-    T_MAX = 5
+    input_dims = [49]
     global_actor_critic = ActorCritic(input_dims, n_actions)
     global_actor_critic.share_memory()
     optim = SharedAdam(global_actor_critic.parameters(), lr=lr, 
@@ -160,8 +172,8 @@ if __name__ == '__main__':
                     n_actions,
                     gamma=0.99,
                     lr=lr,
-                    name=i,
+                    name='agent_0',
                     global_ep_idx=global_ep,
-                    env_id=env_id) for i in range(mp.cpu_count())]
+                    env_id=env_id)] #for i in range(mp.cpu_count())]
     [w.start() for w in workers]
     [w.join() for w in workers]
