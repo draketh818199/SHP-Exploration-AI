@@ -6,7 +6,9 @@
 # Improvements needed
 # =========================
 # change outputs to be a dict of all agents
-# finish connecting agents to petting zoo environement
+# Figure out how to save trained model
+# decide if I want agents to use global or individual actorcritics
+
 
 import torch as T
 import torch.multiprocessing as mp
@@ -50,9 +52,9 @@ class ActorCritic(nn.Module):
         self.states = []
 
     def remember(self, state, action, reward):
-        self.states.append(state)
-        self.actions.append(action)
-        self.rewards.append(reward)
+        self.states.append(state["agent_0"]) # this will need large changes to handel multi agent
+        self.actions.append(action["agent_0"])
+        self.rewards.append(reward["agent_0"])
 
     def clear_memory(self):
         self.states = []
@@ -69,7 +71,10 @@ class ActorCritic(nn.Module):
         return pi, v
 
     def calc_R(self, done):
-        states = T.tensor(self.states, dtype=T.float)
+        states = T.tensor(self.states, dtype=T.float32)
+        states = states.view(states.shape[0], -1)
+
+        
         _, v = self.forward(states)
 
         R = v[-1]*(1-int(done))
@@ -85,6 +90,7 @@ class ActorCritic(nn.Module):
 
     def calc_loss(self, done):
         states = T.tensor(self.states, dtype=T.float)
+        states = states.view(states.shape[0], -1)
         actions = T.tensor(self.actions, dtype=T.float)
 
         returns = self.calc_R(done)
@@ -103,7 +109,7 @@ class ActorCritic(nn.Module):
         return total_loss
 
     def choose_action(self, observation):
-        state = T.tensor(observation["agent_0"], dtype = T.float32)
+        state = T.tensor(observation["agent_0"], dtype = T.float32) # hanndels dict by selecting only current, handel multiple later
         state = state.view(1, -1) #flattens input array to be one dimension
         pi, v = self.forward(state)
         probs = T.softmax(pi, dim=1)
@@ -120,7 +126,8 @@ class Agent(mp.Process):
         self.global_actor_critic = global_actor_critic
         self.name = 'agent_0'
         self.episode_idx = global_ep_idx
-        self.env = environement.PettingZooEnvironement.env(render_mode="human")
+        print("start process")
+        self.env = environement.PettingZooEnvironement.env(render_mode="none")
         self.optimizer = optimizer
 
     def run(self):
@@ -131,12 +138,15 @@ class Agent(mp.Process):
             self.local_actor_critic.clear_memory()
             terminated = False
             truncated = False
-            while not terminated or not truncated:
-                action = self.local_actor_critic.choose_action(observation)
-                observation_, reward, terminated, truncated, info = self.env.step(action)
-                done = terminated or truncated
-                score += reward
-                self.local_actor_critic.remember(observation, action, reward)
+            done = False
+            while not done:
+                action = self.local_actor_critic.choose_action(observation) # (for multi agent) change to for each agent
+                actions = {"agent_0": action}
+                print (action, end=" ")
+                observation_, reward, terminated, truncated, info = self.env.step(actions)
+                done = terminated["agent_0"] or truncated["agent_0"]
+                score += reward["agent_0"]
+                self.local_actor_critic.remember(observation, actions, reward)
                 if t_step % T_MAX == 0 or done:
                     loss = self.local_actor_critic.calc_loss(done)
                     self.optimizer.zero_grad()
@@ -155,10 +165,11 @@ class Agent(mp.Process):
                 self.episode_idx.value += 1
             print(self.name, 'episode ', self.episode_idx.value, 'reward %.1f' % score)
 
+
 if __name__ == '__main__':
     lr = 1e-4
     env_id = 'CartPole-v0'
-    n_actions = 2
+    n_actions = 4
     input_dims = [49]
     global_actor_critic = ActorCritic(input_dims, n_actions)
     global_actor_critic.share_memory()

@@ -12,6 +12,7 @@ from gymnasium import spaces
 # larger map & more map option (probably in another file maybe procedural)
 # improved reward function
 # maybe add continuous movement & ray vision
+# replace map with number array
 
 
 # =========================
@@ -36,7 +37,7 @@ MAP0 = [
 # =========================
 
 RENDER_FPS = 30
-MAX_STEPS = 200
+MAX_STEPS = 250
 
 
 # =========================
@@ -100,6 +101,7 @@ class env(ParallelEnv):
 
         self.player_pos = self._find_player_start()
         self.grid[self.player_pos[0]][self.player_pos[1]] = " P "
+        self.goal_pos = self._find_goal()
 
         obs = self._get_observation()
         reward = 0
@@ -136,21 +138,25 @@ class env(ParallelEnv):
         nx, ny = x + dx, y + dy
 
         #add more complex reward function here
-        reward = -0.01
+        old_pos = self.player_pos
+        new_pos = old_pos
         terminated = False
+        reward = -0.01
 
         # bounds check
         if 0 <= nx < self.size and 0 <= ny < self.size:
 
             if self.grid[nx][ny] != "███":
 
-                if self.grid[nx][ny] == " G ":
-                    reward = 1.0
-                    terminated = True
+                new_pos = (nx, ny)
+
+                reached_goal = self.grid[nx][ny] == " G "
 
                 self.grid[x][y] = "   "
                 self.grid[nx][ny] = " P "
                 self.player_pos = (nx, ny)
+
+                reward = self._calculate_reward(old_pos, new_pos, reached_goal)
 
         obs = self._get_observation()
 
@@ -167,6 +173,31 @@ class env(ParallelEnv):
             self.agents = []
 
         return observations, rewards, terminations, truncations, infos
+
+
+    #reward calculated by distance to goal
+    def _calculate_reward(self, old_pos, new_pos, reached_goal):
+
+        gx, gy = self.goal_pos
+
+        old_dist = math.sqrt((old_pos[0] - gx)**2 + (old_pos[1] - gy)**2)
+        new_dist = math.sqrt((new_pos[0] - gx)**2 + (new_pos[1] - gy)**2)
+
+        # large reward for reaching goal
+        if reached_goal:
+            return 10.0
+
+        # moved closer
+        if new_dist < old_dist:
+            return 0.1
+
+        # moved farther away
+        if new_dist > old_dist:
+            return -0.1
+
+        # same distance
+        return -0.01
+
 
     # =========================
     # OBSERVATION LOGIC
@@ -208,6 +239,13 @@ class env(ParallelEnv):
                     self.grid[r][c] = "   "
                     return (r, c)
         raise ValueError("No start position found")
+    
+    def _find_goal(self):
+        for r in range(len(self.grid)):
+            for c in range(len(self.grid[r])):
+                if self.grid[r][c] == " G ":
+                    return (r, c)
+        raise ValueError("No goal found")
 
     # =========================
     # RENDERING
