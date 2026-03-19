@@ -6,8 +6,11 @@
 # Improvements needed
 # =========================
 # change outputs to be a dict of all agents
+# save reward data and make it graph
 # Figure out how to save trained model
 # decide if I want agents to use global or individual actorcritics
+# get visual training working (maybe another program the just runs saved training)
+# streatch goal - make UI for running / viewing agent
 
 
 import torch as T
@@ -16,9 +19,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
 import environement.PettingZooEnvironement
+import matplotlib.pyplot as plt
+plt.ion()
 
-N_GAMES = 3
-T_MAX = 5
+# =========================
+# Constants
+# =========================
+N_GAMES = 200 # number of rounds
+T_MAX = 50 # number of steps before updating model
+ENTROPY_SCALAR = .01 # scales entropy value
+PRINT_ACTION = False # print every action taken
+PRINT_REWARD = True # print rewards and end of round
+PLOT_REWARD = True
+
 
 class SharedAdam(T.optim.Adam):
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.99), eps=1e-8,
@@ -97,12 +110,13 @@ class ActorCritic(nn.Module):
 
         pi, values = self.forward(states)
         values = values.squeeze()
-        critic_loss = (returns-values)**2
+        critic_loss = (returns-values)**2        
 
         probs = T.softmax(pi, dim=1)
         dist = Categorical(probs)
         log_probs = dist.log_prob(actions)
-        actor_loss = -log_probs*(returns-values)
+        entropy = dist.entropy()
+        actor_loss = -log_probs*(returns-values) - ENTROPY_SCALAR * entropy
 
         total_loss = (critic_loss + actor_loss).mean()
     
@@ -120,7 +134,7 @@ class ActorCritic(nn.Module):
 
 class Agent(mp.Process):
     def __init__(self, global_actor_critic, optimizer, input_dims, n_actions, 
-                gamma, lr, name, global_ep_idx, env_id):
+                gamma, lr, name, global_ep_idx, env_id, plotter=None):
         super(Agent, self).__init__()
         self.local_actor_critic = ActorCritic(input_dims, n_actions, gamma)
         self.global_actor_critic = global_actor_critic
@@ -129,6 +143,7 @@ class Agent(mp.Process):
         print("start process")
         self.env = environement.PettingZooEnvironement.env(render_mode="none")
         self.optimizer = optimizer
+        self.plotter = plotter
 
     def run(self):
         t_step = 1
@@ -142,7 +157,8 @@ class Agent(mp.Process):
             while not done:
                 action = self.local_actor_critic.choose_action(observation) # (for multi agent) change to for each agent
                 actions = {"agent_0": action}
-                print (action, end=" ")
+                if (PRINT_ACTION):
+                    print (action, end=" ")
                 observation_, reward, terminated, truncated, info = self.env.step(actions)
                 done = terminated["agent_0"] or truncated["agent_0"]
                 score += reward["agent_0"]
@@ -163,7 +179,41 @@ class Agent(mp.Process):
                 observation = observation_
             with self.episode_idx.get_lock():
                 self.episode_idx.value += 1
-            print(self.name, 'episode ', self.episode_idx.value, 'reward %.1f' % score)
+            if (PRINT_REWARD):
+                if(PRINT_ACTION):
+                    print()
+                print(self.name, 'episode', self.episode_idx.value, 'reward %.1f' % score)
+            if self.plotter is not None:
+                self.plotter.update(self.episode_idx.value, score)
+
+
+
+class LivePlot:
+    def __init__(self):
+        self.x = []
+        self.y = []
+
+        self.fig, self.ax = plt.subplots()
+        self.line, = self.ax.plot(self.x, self.y)
+
+        self.ax.set_title("Training Reward")
+        self.ax.set_xlabel("Episode")
+        self.ax.set_ylabel("Score")
+
+    def update(self, episode, score):
+        self.x.append(episode)
+        self.y.append(score)
+
+        self.line.set_xdata(self.x)
+        self.line.set_ydata(self.y)
+
+        self.ax.relim()
+        self.ax.autoscale_view()
+
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
+
+
 
 
 if __name__ == '__main__':
@@ -171,12 +221,12 @@ if __name__ == '__main__':
     env_id = 'CartPole-v0'
     n_actions = 4
     input_dims = [49]
+    if(PLOT_REWARD):
+        plotter = LivePlot()
     global_actor_critic = ActorCritic(input_dims, n_actions)
     global_actor_critic.share_memory()
-    optim = SharedAdam(global_actor_critic.parameters(), lr=lr, 
-                        betas=(0.92, 0.999))
+    optim = SharedAdam(global_actor_critic.parameters(), lr=lr, betas=(0.92, 0.999))
     global_ep = mp.Value('i', 0)
-
     workers = [Agent(global_actor_critic,
                     optim,
                     input_dims,
@@ -185,6 +235,7 @@ if __name__ == '__main__':
                     lr=lr,
                     name='agent_0',
                     global_ep_idx=global_ep,
-                    env_id=env_id)] #for i in range(mp.cpu_count())]
+                    env_id=env_id,
+                    plotter = plotter)] #for i in range(mp.cpu_count())]
     [w.start() for w in workers]
     [w.join() for w in workers]
