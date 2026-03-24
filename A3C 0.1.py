@@ -6,10 +6,10 @@
 # Improvements needed
 # =========================
 # change outputs to be a dict of all agents
-# save reward data and make it graph
+# better data display
 # Figure out how to save trained model
 # decide if I want agents to use global or individual actorcritics
-# get visual training working (maybe another program the just runs saved training)
+# get visual environment working (maybe another program the just runs saved training)
 # streatch goal - make UI for running / viewing agent
 
 
@@ -18,7 +18,7 @@ import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
-import environement.PettingZooEnvironement
+import environement.pettingZooEnvironement
 import matplotlib.pyplot as plt
 plt.ion()
 
@@ -141,7 +141,7 @@ class Agent(mp.Process):
         self.name = 'agent_0'
         self.episode_idx = global_ep_idx
         print("start process")
-        self.env = environement.PettingZooEnvironement.env(render_mode="none")
+        self.env = environement.pettingZooEnvironement.env(render_mode="none")
         self.optimizer = optimizer
         self.plotter = plotter
 

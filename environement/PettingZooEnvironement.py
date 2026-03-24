@@ -2,6 +2,7 @@ import copy
 import math
 import numpy as np
 import pygame
+from environement import mapReader
 
 from pettingzoo import ParallelEnv
 from gymnasium import spaces
@@ -9,28 +10,12 @@ from gymnasium import spaces
 # =========================
 # Improvements needed
 # =========================
-# larger map & more map option (probably in another file maybe procedural)
+# larger map & more map options (probably in another file maybe procedural)
 # improved reward function
 # maybe add continuous movement & ray vision
 # replace map with number array
 
 
-# =========================
-# MAP DEFINITION
-# =========================
-
-MAP0 = [
-    ["███","███","███","███","███","███","███","███","███","███"],
-    ["███","   ","   ","   ","   ","   ","   ","   ","   ","███"],
-    ["███","   ","   ","   ","   ","   ","   ","   ","   ","███"],
-    ["███","   ","   ","   ","   ","   ","   ","   ","   ","███"],
-    ["███","   ","   ","   ","   ","   ","   ","   ","   ","███"],
-    ["███","   ","███","███","   ","   ","   ","   ","   ","███"],
-    ["███","   "," G ","███","   ","   ","   ","   ","   ","███"],
-    ["███","   ","   ","███","   ","   ","   ","   ","   ","███"],
-    ["███","   ","   ","███","   ","   ","   ","   ","   ","███"],
-    ["███","███","███","███"," O ","███","███","███","███","███"]
-]
 
 # =========================
 # Constant Variables
@@ -38,7 +23,10 @@ MAP0 = [
 
 RENDER_FPS = 30
 MAX_STEPS = 250
+MAP_ID = 3
 
+
+get_map = mapReader.load_map(MAP_ID)
 
 # =========================
 # PETTINGZOO ENVIRONMENT
@@ -61,8 +49,8 @@ class env(ParallelEnv):
         self.vision_radius = vision_radius
         self.render_mode = render_mode
 
-        self.original_map = MAP0
-        self.size = len(MAP0)
+        self.original_map = get_map
+        self.size = len(get_map)
 
         # Actions: up, down, left, right
         self._action_spaces = {
@@ -100,7 +88,7 @@ class env(ParallelEnv):
         self.grid = copy.deepcopy(self.original_map)
 
         self.player_pos = self._find_player_start()
-        self.grid[self.player_pos[0]][self.player_pos[1]] = " P "
+        self.grid[self.player_pos[0]][self.player_pos[1]] = 2
         self.goal_pos = self._find_goal()
 
         obs = self._get_observation()
@@ -146,14 +134,14 @@ class env(ParallelEnv):
         # bounds check
         if 0 <= nx < self.size and 0 <= ny < self.size:
 
-            if self.grid[nx][ny] != "███":
+            if self.grid[nx][ny] != 1:
 
                 new_pos = (nx, ny)
 
-                reached_goal = self.grid[nx][ny] == " G "
+                reached_goal = self.grid[nx][ny] == 3
 
-                self.grid[x][y] = "   "
-                self.grid[nx][ny] = " P "
+                self.grid[x][y] = 0
+                self.grid[nx][ny] = 2
                 self.player_pos = (nx, ny)
 
                 reward = self._calculate_reward(old_pos, new_pos, reached_goal)
@@ -219,7 +207,7 @@ class env(ParallelEnv):
                     continue
 
                 if 0 <= r < self.size and 0 <= c < self.size:
-                    obs[i, j] = self._encode_tile(self.grid[r][c])
+                    obs[i, j] = (self.grid[r][c])
 
         return obs
 
@@ -235,15 +223,15 @@ class env(ParallelEnv):
     def _find_player_start(self):
         for r in range(len(self.grid)):
             for c in range(len(self.grid[r])):
-                if self.grid[r][c] == " O ":
-                    self.grid[r][c] = "   "
+                if self.grid[r][c] == 2:
+                    self.grid[r][c] = 0
                     return (r, c)
         raise ValueError("No start position found")
     
     def _find_goal(self):
         for r in range(len(self.grid)):
             for c in range(len(self.grid[r])):
-                if self.grid[r][c] == " G ":
+                if self.grid[r][c] == 3:
                     return (r, c)
         raise ValueError("No goal found")
 
@@ -280,10 +268,10 @@ class env(ParallelEnv):
             )
 
             color_map = {
-                "███": (50, 50, 50),
-                "   ": (255, 255, 255),
-                " G ": (0, 255, 0),
-                " P ": (0, 0, 255),
+                1: (50, 50, 50),
+                0: (255, 255, 255),
+                3: (0, 255, 0),
+                2: (0, 0, 255),
             }
 
             for r in range(self.size):
@@ -312,10 +300,10 @@ class env(ParallelEnv):
             )
 
             color_map = {
-                "███": (50, 50, 50),
-                "   ": (255, 255, 255),
-                " G ": (0, 255, 0),
-                " P ": (0, 0, 255),
+                1: (50, 50, 50),
+                0: (255, 255, 255),
+                3: (0, 255, 0),
+                2: (0, 0, 255),
             }
 
             for r in range(self.size):
