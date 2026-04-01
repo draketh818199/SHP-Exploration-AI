@@ -10,10 +10,8 @@ from gymnasium import spaces
 # =========================
 # Improvements needed
 # =========================
-# larger map & more map options (probably in another file maybe procedural)
 # improved reward function
 # maybe add continuous movement & ray vision
-# replace map with number array
 
 
 
@@ -23,7 +21,7 @@ from gymnasium import spaces
 
 RENDER_FPS = 30
 MAX_STEPS = 250
-MAP_ID = 3
+MAP_ID = 15
 
 
 get_map = mapReader.load_map(MAP_ID)

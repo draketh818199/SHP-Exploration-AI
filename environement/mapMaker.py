@@ -2,6 +2,15 @@ import random
 import sqlite3
 import json
 
+
+# =======================
+# Improvments
+# =======================
+# Make dense building generation work
+# Reuce non-connecting rooms in spread generation
+# make both variable size
+
+
 # =======================
 # CONFIG CONSTANTS
 # =======================
