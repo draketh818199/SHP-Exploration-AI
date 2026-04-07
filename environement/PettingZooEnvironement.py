@@ -209,15 +209,6 @@ class env(ParallelEnv):
 
         return obs
 
-    def _encode_tile(self, tile):
-        if tile == "███":
-            return 1
-        if tile == " G ":
-            return 2
-        if tile == " P ":
-            return 3
-        return 0
-
     def _find_player_start(self):
         for r in range(len(self.grid)):
             for c in range(len(self.grid[r])):

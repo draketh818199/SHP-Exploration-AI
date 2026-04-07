@@ -148,8 +148,20 @@ class Agent(mp.Process):
         self.data_queue = data_queue
         self.control_queue = control_queue
         self.running = False
+        self.data_queue.put({
+            "type": "log",
+            "agent": self.name,
+            "level": "info",   # info, warning, error
+            "message": "Agent initialized"
+        })
 
     def run(self):
+        self.data_queue.put({
+            "type": "log",
+            "agent": self.name,
+            "level": "info",   # info, warning, error
+            "message": "Started Agent"
+        })
         t_step = 1
         while True:
             # --- CONTROL QUEUE ---
@@ -169,6 +181,11 @@ class Agent(mp.Process):
             # --- PAUSE ---
             if not self.running:
                 time.sleep(0.05)
+                self.data_queue.put({
+                    "type": "status",
+                    "agent": self.name,
+                    "status": "stoped"
+                })
                 continue
             observation, reward, terminated, truncated, info = self.env.reset()
             score = 0
@@ -177,6 +194,11 @@ class Agent(mp.Process):
             truncated = False
             done = False
             self.path=[]
+            self.data_queue.put({
+                "type": "status",
+                "agent": self.name,
+                "status": "running"
+            })
             while not done:
                 action = self.local_actor_critic.choose_action(observation) # (for multi agent) change to for each agent
                 actions = {"agent_0": action}
@@ -217,7 +239,7 @@ class Agent(mp.Process):
                 "type": "episode",
                 "agent": self.name,
                 "episode": self.episode_idx.value,
-                "reward": score,
+                "rewards": score,
                 "path": self.path.copy()
             })
 
