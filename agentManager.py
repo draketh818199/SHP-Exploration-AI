@@ -58,26 +58,22 @@ class AgentManager:
         self.agents.append(agent)
 
     # -------------------------
-    # Start agents
+    # Agent controls
     # -------------------------
     def start_all(self):
         for agent in self.agents:
             if not agent.is_alive():
                 agent.start()
+        self.control_queue.put({"type": "action", "action": "start"})
 
-        self.control_queue.put({"action": "start"})
-
-    # -------------------------
-    # Stop agents
-    # -------------------------
     def stop_all(self):
-        self.control_queue.put({"action": "stop"})
+        self.control_queue.put({"type": "action", "action": "stop"})
 
-    # -------------------------
-    # Reset agents
-    # -------------------------
     def reset_all(self):
-        self.control_queue.put({"action": "reset"})
+        self.control_queue.put({"type": "action", "action": "reset"})
+    
+    def speed_control(self, speed):
+        self.control_queue.put({"type": "speed","value": speed})
 
     # -------------------------
     # Access data queue

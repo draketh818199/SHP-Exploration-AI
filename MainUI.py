@@ -10,9 +10,10 @@ from agentManager import AgentManager
 #--------------------------
 # Improvements needed
 #--------------------------
-# Add graphs
-# Add tabs to display - Session path - Live movement
-# Ensure all functionality is done in UI
+# Add tabs to display - Session path - Live movement - heatMap?
+# add trained model saving and selecting
+# add more data & graphs & logs
+# add imediate feedback on start button press
 
 
 # -------------------------
@@ -151,7 +152,16 @@ def update_ui(data_queue):
     # update graphs
     rewards = state["agents"][agent]["rewards"]
     if rewards:
-        dpg.set_value("reward_series", [list(range(len(rewards))), rewards])
+        x = list(range(len(rewards)))
+        y = rewards
+
+        dpg.set_value("reward_series", [x, y])
+        xmin, xmax = 0, len(rewards)
+        ymin, ymax = min(rewards), max(rewards)
+
+        padding = 1
+        dpg.set_axis_limits("x_axis", xmin, xmax)
+        dpg.set_axis_limits("y_axis", ymin - padding, ymax + padding)
 
 
 def update_logs(agent):
@@ -191,13 +201,23 @@ def reset_callback(sender, app_data, user_data):
     manager = user_data
     manager.reset_all()
 
+def update_speed(sender, app_data, user_data):
+    manager = user_data
+    max_delay = 0.1      # slowest
+    k = 5                # controls curve steepness
+    simulation_delay = max_delay * (math.pow(app_data, k))
+    if simulation_delay < 0.001:
+        simulation_delay = 0.0
+    manager.speed_control(simulation_delay)
+    
+
 # -------------------------
 # UI Layout setup
 # -------------------------
 
 
 def setup_ui(manager):
-    with dpg.window(label="AI Dashboard", width=1200, height=800):
+    with dpg.window(label="AI Dashboard", width=1600, height=800):
 
         # Top Controls
         with dpg.group(horizontal=True):
@@ -206,59 +226,76 @@ def setup_ui(manager):
             dpg.add_button(label="Reset", callback=reset_callback, user_data=manager)
 
         # Main Layout
-        with dpg.group(horizontal=True):
+        with dpg.table(header_row=False, resizable=True):
+            dpg.add_table_column(width_fixed=True, init_width_or_weight=200)  # left
+            dpg.add_table_column(width_fixed=True, init_width_or_weight=825) 
+            dpg.add_table_column(width_fixed=True, init_width_or_weight=500)  # right
 
-            # ---------------- LEFT PANEL ----------------
-            with dpg.child_window(width=200):
-                dpg.add_text("Agents")
-                dpg.add_listbox(items=["Agent 0"], num_items=4)
+            with dpg.table_row():
 
-                dpg.add_separator
-                dpg.add_text(tag="status_text")
-                dpg.add_text(tag="episode_text")
 
-                dpg.add_separator()
-                with dpg.child_window(tag="log_window", autosize_x=True, height=200):
-                    pass
-            
-            # ---------------- CENTER PANEL ----------------
-            with dpg.child_window():
-                dpg.add_text("Path Visualization")
+                # ---------------- LEFT PANEL ----------------
+                with dpg.child_window():
+                    dpg.add_text("Agents")
+                    dpg.add_listbox(items=["Agent 0"], num_items=4)
 
-                with dpg.drawlist(width=draw_width, height=draw_height, tag="main_drawlist"):
-                    dpg.draw_rectangle((0, 0), (800, 500), fill=(100, 100, 100))
-                    with dpg.draw_layer(tag="grid_layer"):
+                    dpg.add_separator
+                    dpg.add_text(tag="status_text")
+                    dpg.add_text(tag="episode_text")
+
+                    dpg.add_separator()
+                    with dpg.child_window(tag="log_window", autosize_x=True, height=200):
                         pass
-                    with dpg.draw_layer(tag="path_layer"):
-                        pass
+                
+                # ---------------- CENTER PANEL ----------------
+                with dpg.child_window():
+                    dpg.add_text("Simulation Speed")
+                    dpg.add_slider_float(
+                        label="Delay (seconds)",
+                        default_value=1.0,
+                        min_value=0.0,
+                        max_value=1.0,
+                        callback=update_speed,
+                        user_data=manager,
+                        tag="speed_slider"
+                    )
 
-            # ---------------- RIGHT PANEL ----------------
-            with dpg.child_window(width=350):
+                    dpg.add_text("Path Visualization")
 
-                with dpg.tab_bar():
+                    with dpg.drawlist(width=draw_width, height=draw_height, tag="main_drawlist"):
+                        dpg.draw_rectangle((0, 0), (800, 500), fill=(100, 100, 100))
+                        with dpg.draw_layer(tag="grid_layer"):
+                            pass
+                        with dpg.draw_layer(tag="path_layer"):
+                            pass
 
-                    # ---- Performance Tab ----
-                    with dpg.tab(label="Performance"):
-                        dpg.add_text("Reward Over Time")
+                # ---------------- RIGHT PANEL ----------------
+                with dpg.child_window():
 
-                        with dpg.plot(height=200):
-                            dpg.add_plot_axis(dpg.mvXAxis, label="Step")
-                            with dpg.plot_axis(dpg.mvYAxis, label="Reward"):
-                                dpg.add_line_series([], [], tag="reward_series")
+                    with dpg.tab_bar():
 
-                    # ---- Training Tab ----
-                    with dpg.tab(label="Training"):
-                        dpg.add_text("Loss Curve")
+                        # ---- Performance Tab ----
+                        with dpg.tab(label="Performance"):
+                            dpg.add_text("Reward Over Time")
 
-                        with dpg.plot(height=200):
-                            dpg.add_plot_axis(dpg.mvXAxis, label="Step")
-                            with dpg.plot_axis(dpg.mvYAxis, label="Loss"):
-                                dpg.add_line_series([], [], tag="loss_series")
+                            with dpg.plot(height=200):
+                                dpg.add_plot_axis(dpg.mvXAxis, label="Step", tag="x_axis")
+                                with dpg.plot_axis(dpg.mvYAxis, label="Reward", tag="y_axis"):
+                                    dpg.add_line_series([], [], tag="reward_series")
 
-                    # ---- Diagnostics Tab ----
-                    with dpg.tab(label="Diagnostics"):
-                        dpg.add_text("Stats")
-                        dpg.add_text(lambda: f"Steps: {len(state["agents"]["agent_0"]["path"])}")
+                        # ---- Training Tab ----
+                        with dpg.tab(label="Training"):
+                            dpg.add_text("Loss Curve")
+
+                            with dpg.plot(height=200):
+                                dpg.add_plot_axis(dpg.mvXAxis, label="Step")
+                                with dpg.plot_axis(dpg.mvYAxis, label="Loss"):
+                                    dpg.add_line_series([], [], tag="loss_series")
+
+                        # ---- Diagnostics Tab ----
+                        with dpg.tab(label="Diagnostics"):
+                            dpg.add_text("Stats")
+                            dpg.add_text(lambda: f"Steps: {len(state["agents"]["agent_0"]["path"])}")
 
 
 def start(manager):

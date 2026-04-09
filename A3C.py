@@ -32,7 +32,6 @@ T_MAX = 50 # number of steps before updating model
 ENTROPY_SCALAR = .01 # scales entropy value
 PRINT_ACTION = False # print every action taken
 PRINT_REWARD = True # print rewards and end of round
-PLOT_REWARD = True
 
 
 class SharedAdam(T.optim.Adam):
@@ -148,6 +147,7 @@ class Agent(mp.Process):
         self.data_queue = data_queue
         self.control_queue = control_queue
         self.running = False
+        self.simulation_delay = .2
         self.data_queue.put({
             "type": "log",
             "agent": self.name,
@@ -164,23 +164,10 @@ class Agent(mp.Process):
         })
         t_step = 1
         while True:
-            # --- CONTROL QUEUE ---
-            while not self.control_queue.empty():
-                cmd = self.control_queue.get()
-
-                if cmd["action"] == "start":
-                    self.running = True
-
-                elif cmd["action"] == "stop":
-                    self.running = False
-
-                elif cmd["action"] == "reset":
-                    self.running = False
-                    self.episode_idx.value = 0
-                    self.local_actor_critic.clear_memory()
             # --- PAUSE ---
             if not self.running:
-                time.sleep(0.05)
+                time.sleep(.05)
+                self.process_control_queue()
                 self.data_queue.put({
                     "type": "status",
                     "agent": self.name,
@@ -200,6 +187,9 @@ class Agent(mp.Process):
                 "status": "running"
             })
             while not done:
+                self.process_control_queue()
+                if self.simulation_delay > 0:
+                    time.sleep(self.simulation_delay)
                 action = self.local_actor_critic.choose_action(observation) # (for multi agent) change to for each agent
                 actions = {"agent_0": action}
                 if (PRINT_ACTION):
@@ -243,30 +233,25 @@ class Agent(mp.Process):
                 "path": self.path.copy()
             })
 
+    def process_control_queue(self):
+         # --- CONTROL QUEUE ---
+        while not self.control_queue.empty():
+            cmd = self.control_queue.get()
+            
+            # action control
+            if cmd["type"] == "action":
+                if cmd["action"] == "start":
+                    self.running = True
 
+                elif cmd["action"] == "stop":
+                    self.running = False
 
+                elif cmd["action"] == "reset":
+                    self.running = False
+                    self.episode_idx.value = 0
+                    self.local_actor_critic.clear_memory()
+                
+            # speed control
+            elif cmd["type"] == "speed":
+                self.simulation_delay = cmd["value"]
 
-#if __name__ == '__main__':
-#    lr = 1e-4
-#    env_id = 'CartPole-v0'
-#    n_actions = 4
-#    input_dims = [49]
-#    data_queue = Queue()
-#    control_queue = Queue()
-#    global_actor_critic = ActorCritic(input_dims, n_actions)
-#    global_actor_critic.share_memory()
-#    optim = SharedAdam(global_actor_critic.parameters(), lr=lr, betas=(0.92, 0.999))
-#    global_ep = mp.Value('i', 0)
-#    workers = [Agent(global_actor_critic,
-#                    optim,
-#                    input_dims,
-#                    n_actions,
-#                    gamma=0.99,
-#                    lr=lr,
-#                    name='agent_0',
-#                    global_ep_idx=global_ep,
-#                    env_id=env_id,
-#                    data_queue=data_queue,
-#                    control_queue=control_queue)] #for i in range(mp.cpu_count())]
-#    [w.start() for w in workers]
-#    [w.join() for w in workers]

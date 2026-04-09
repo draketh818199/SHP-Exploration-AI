@@ -123,9 +123,8 @@ class env(ParallelEnv):
         x, y = self.player_pos
         nx, ny = x + dx, y + dy
 
-        #add more complex reward function here
         old_pos = self.player_pos
-        new_pos = old_pos
+        new_pos = (nx, ny)
         terminated = False
         reward = -0.01
 
@@ -136,13 +135,13 @@ class env(ParallelEnv):
 
                 new_pos = (nx, ny)
 
-                reached_goal = self.grid[nx][ny] == 3
+                terminated = self.grid[nx][ny] == 3
 
                 self.grid[x][y] = 0
                 self.grid[nx][ny] = 2
                 self.player_pos = (nx, ny)
 
-                reward = self._calculate_reward(old_pos, new_pos, reached_goal)
+                reward = self._calculate_reward(old_pos, new_pos, terminated)
 
         obs = self._get_observation()
 
