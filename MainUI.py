@@ -11,9 +11,15 @@ from agentManager import AgentManager
 # Improvements needed
 #--------------------------
 # Add tabs to display - Session path - Live movement - heatMap?
-# add trained model saving and selecting
+# add trained model saving and selecting 
+# add training values setting
+# save and load training values w/ model
 # add more data & graphs & logs
 # add imediate feedback on start button press
+# change reset button to reset current agent weights
+# add variable run lenght
+# reset reward graph on agent reset
+# find why dashboard is delayed (seems like dataQueue is being prcessed slower than its being added to)
 
 
 # -------------------------
@@ -21,6 +27,10 @@ from agentManager import AgentManager
 # -------------------------
 draw_width = 800
 draw_height = 500
+lr = 1e-3
+gamma = .99
+entropy_scaler = .01
+t_max = 50
 control_queue = Queue()
 state = {
     "agents": {
@@ -30,7 +40,8 @@ state = {
             "grid": None,
             "logs": [],
             "status": "idle",
-            "episode": []
+            "episode": [],
+            "loss": []
         }
     }
 }
@@ -59,6 +70,7 @@ def process_queue(data_queue):
             state["agents"][agent]["path"] = msg["path"]
             state["agents"][agent]["rewards"].append(msg["rewards"])
             state["agents"][agent]["episode"] = msg["episode"]
+            #state["agents"][agent]["loss"].append(msg["loss"])
 
         elif msg["type"] == "log":
             logs = state["agents"][agent]["logs"]
@@ -150,15 +162,26 @@ def update_ui(data_queue):
     dpg.set_value("episode_text", f"Episode: {episode}")
 
     # update graphs
+    # reward graph
     rewards = state["agents"][agent]["rewards"]
     if rewards:
         x = list(range(len(rewards)))
         y = rewards
-
         dpg.set_value("reward_series", [x, y])
         xmin, xmax = 0, len(rewards)
         ymin, ymax = min(rewards), max(rewards)
-
+        padding = 1
+        dpg.set_axis_limits("x_axis", xmin, xmax)
+        dpg.set_axis_limits("y_axis", ymin - padding, ymax + padding)
+    
+    # loss graph
+    loss = state["agents"][agent]["loss"]
+    if loss:
+        x = list(range(len(rewards)))
+        y = loss
+        dpg.set_value("loss_series", [x, y])
+        xmin, xmax = 0, len(loss)
+        ymin, ymax = min(loss), max(loss)
         padding = 1
         dpg.set_axis_limits("x_axis", xmin, xmax)
         dpg.set_axis_limits("y_axis", ymin - padding, ymax + padding)
@@ -209,6 +232,11 @@ def update_speed(sender, app_data, user_data):
     if simulation_delay < 0.001:
         simulation_delay = 0.0
     manager.speed_control(simulation_delay)
+
+def update_param(sender, app_data, user_data, manager):
+    param_name, manager = user_data
+    manager.update_param(param_name, app_data)
+
     
 
 # -------------------------
@@ -291,6 +319,35 @@ def setup_ui(manager):
                                 dpg.add_plot_axis(dpg.mvXAxis, label="Step")
                                 with dpg.plot_axis(dpg.mvYAxis, label="Loss"):
                                     dpg.add_line_series([], [], tag="loss_series")
+                            dpg.add_text("Training Parameters")
+
+                            dpg.add_input_float(
+                                label="Learning Rate",
+                                default_value=1e-3,
+                                callback=update_param,
+                                user_data=("lr", manager)
+                            )
+
+                            dpg.add_input_float(
+                                label="Gamma",
+                                default_value=0.99,
+                                callback=update_param,
+                                user_data=("gamma", manager)
+                            )
+
+                            dpg.add_input_float(
+                                label="Entropy",
+                                default_value=0.01,
+                                callback=update_param,
+                                user_data=("entropy", manager)
+                            )
+
+                            dpg.add_input_int(
+                                label="T_MAX",
+                                default_value=50,
+                                callback=update_param,
+                                user_data=("t_max", manager)
+                            )
 
                         # ---- Diagnostics Tab ----
                         with dpg.tab(label="Diagnostics"):

@@ -12,6 +12,7 @@ from gymnasium import spaces
 # =========================
 # improved reward function
 # maybe add continuous movement & ray vision
+# random start location
 
 
 
@@ -61,7 +62,7 @@ class env(ParallelEnv):
             "agent_0": spaces.Box(
                 low=-1,
                 high=3,
-                shape=(view_size, view_size),
+                shape=(2, view_size, view_size),
                 dtype=np.int8
             )
         }
@@ -89,7 +90,11 @@ class env(ParallelEnv):
         self.grid[self.player_pos[0]][self.player_pos[1]] = 2
         self.goal_pos = self._find_goal()
 
-        obs = self._get_observation()
+        self.seen = np.zeros((self.size, self.size), dtype=bool)
+        self.visit_count = np.zeros((self.size, self.size))
+        self.visited = np.zeros((self.size, self.size), dtype=np.float32)
+
+        obs, _ = self._get_observation()
         reward = 0
         terminated = False
 
@@ -122,11 +127,16 @@ class env(ParallelEnv):
         dx, dy = dx_dy[action]
         x, y = self.player_pos
         nx, ny = x + dx, y + dy
+        self.visited *= 0.99
+        self.visited[x][y] = 1.0
 
         old_pos = self.player_pos
         new_pos = (nx, ny)
         terminated = False
         reward = -0.01
+
+        
+        obs, new_tiles = self._get_observation()
 
         # bounds check
         if 0 <= nx < self.size and 0 <= ny < self.size:
@@ -141,9 +151,7 @@ class env(ParallelEnv):
                 self.grid[nx][ny] = 2
                 self.player_pos = (nx, ny)
 
-                reward = self._calculate_reward(old_pos, new_pos, terminated)
-
-        obs = self._get_observation()
+                reward = self._calculate_reward(old_pos, new_pos, new_tiles, terminated)
 
         observations = {"agent_0": obs}
         rewards = {"agent_0": reward}
@@ -161,27 +169,30 @@ class env(ParallelEnv):
 
 
     #reward calculated by distance to goal
-    def _calculate_reward(self, old_pos, new_pos, reached_goal):
+    def _calculate_reward(self, old_pos, new_pos, new_tiles, reached_goal):
 
         gx, gy = self.goal_pos
 
-        old_dist = math.sqrt((old_pos[0] - gx)**2 + (old_pos[1] - gy)**2)
-        new_dist = math.sqrt((new_pos[0] - gx)**2 + (new_pos[1] - gy)**2)
+        #old_dist = math.sqrt((old_pos[0] - gx)**2 + (old_pos[1] - gy)**2)
+        #new_dist = math.sqrt((new_pos[0] - gx)**2 + (new_pos[1] - gy)**2)
 
-        # large reward for reaching goal
+        reward = 0
+        x, y = self.player_pos
+
+        # exploration
+        self.visit_count[x][y] += 1
+        intrinsic_reward = 1.0 / np.sqrt(self.visit_count[x][y])
+        reward += 0.05 * intrinsic_reward
+
+        # new tiles 
+        reward += 0.02 * new_tiles
+
+        # goal
         if reached_goal:
-            return 10.0
+            reward += 10
 
-        # moved closer
-        if new_dist < old_dist:
-            return 0.1
+        return reward
 
-        # moved farther away
-        if new_dist > old_dist:
-            return -0.1
-
-        # same distance
-        return -0.01
 
 
     # =========================
@@ -193,20 +204,30 @@ class env(ParallelEnv):
         px, py = self.player_pos
         radius = self.vision_radius
         view_size = 2 * radius + 1
+        new_tiles = 0
 
-        obs = np.full((view_size, view_size), -1, dtype=np.int8)
+        obs = np.full((2, view_size, view_size), -1, dtype=np.int8)
 
         for i, r in enumerate(range(px - radius, px + radius + 1)):
             for j, c in enumerate(range(py - radius, py + radius + 1)):
 
+                if 0 <= r < self.size and 0 <= c < self.size:
+
+                    # channel 0: environment
+                    obs[0, i, j] = self.grid[r][c]
+
+                    # channel 1: visited
+                    obs[1, i, j] = self.visited[r][c]
+
+                    if not self.seen[r][c]:
+                        self.seen[r][c] = True
+                        new_tiles += 1
+                        
                 dist = math.sqrt((r - px)**2 + (c - py)**2)
                 if dist > radius:
                     continue
 
-                if 0 <= r < self.size and 0 <= c < self.size:
-                    obs[i, j] = (self.grid[r][c])
-
-        return obs
+        return obs, new_tiles
 
     def _find_player_start(self):
         for r in range(len(self.grid)):

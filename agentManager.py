@@ -22,7 +22,7 @@ class AgentManager:
             return
 
         lr = 1e-4
-        input_dims = [49]
+        input_dims = [98]
         n_actions = 4
 
         self.global_actor_critic = ActorCritic(input_dims, n_actions)
@@ -44,7 +44,7 @@ class AgentManager:
         agent = Agent(
             self.global_actor_critic,
             self.optimizer,
-            input_dims=[49],
+            input_dims=[98],
             n_actions=4,
             gamma=0.99,
             lr=1e-4,
@@ -70,10 +70,14 @@ class AgentManager:
         self.control_queue.put({"type": "action", "action": "stop"})
 
     def reset_all(self):
+        SharedAdam.clear_memory
         self.control_queue.put({"type": "action", "action": "reset"})
     
     def speed_control(self, speed):
         self.control_queue.put({"type": "speed","value": speed})
+    
+    def update_param(self, param_name, app_data):
+        self.control_queue.put({"type": "param","name": param_name,"value": app_data})
 
     # -------------------------
     # Access data queue

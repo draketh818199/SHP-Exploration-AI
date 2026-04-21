@@ -22,6 +22,7 @@ import environement.pettingZooEnvironement
 import matplotlib.pyplot as plt
 from multiprocessing import Queue
 import time
+import numpy as np
 plt.ion() # probably unused
 
 # =========================
@@ -29,13 +30,15 @@ plt.ion() # probably unused
 # =========================
 N_GAMES = 200 # number of rounds
 T_MAX = 50 # number of steps before updating model
-ENTROPY_SCALAR = .01 # scales entropy value
+ENTROPY_SCALAR = .02 # scales entropy value
 PRINT_ACTION = False # print every action taken
 PRINT_REWARD = True # print rewards and end of round
+LR = 1e-3
+GAMMA = .99
 
 
 class SharedAdam(T.optim.Adam):
-    def __init__(self, params, lr=1e-3, betas=(0.9, 0.99), eps=1e-8,
+    def __init__(self, params, lr=LR, betas=(0.9, 0.99), eps=1e-8,
             weight_decay=0):
         super(SharedAdam, self).__init__(params, lr=lr, betas=betas, eps=eps,
                 weight_decay=weight_decay)
@@ -49,6 +52,12 @@ class SharedAdam(T.optim.Adam):
 
                 state['exp_avg'].share_memory_()
                 state['exp_avg_sq'].share_memory_()
+    
+    def clear_memory(self):
+        self.state = []
+    
+    def load_memory(self, mem):
+        self.state = [mem]
 
 class ActorCritic(nn.Module):
     def __init__(self, input_dims, n_actions, gamma=0.99):
@@ -56,8 +65,8 @@ class ActorCritic(nn.Module):
 
         self.gamma = gamma
 
-        self.pi1 = nn.Linear(*input_dims, 128)
-        self.v1 = nn.Linear(*input_dims, 128)
+        self.fc1 = nn.Linear(*input_dims, 128)
+        self.fc2 = nn.Linear(128, 128)
         self.pi = nn.Linear(128, n_actions)
         self.v = nn.Linear(128, 1)
 
@@ -66,7 +75,7 @@ class ActorCritic(nn.Module):
         self.states = []
 
     def remember(self, state, action, reward):
-        self.states.append(state["agent_0"]) # this will need large changes to handel multi agent
+        self.states.append(state["agent_0"].astype(np.float32)) # this will need large changes to handel multi agent
         self.actions.append(action["agent_0"])
         self.rewards.append(reward["agent_0"])
 
@@ -76,11 +85,11 @@ class ActorCritic(nn.Module):
         self.rewards = []
 
     def forward(self, state):
-        pi1 = F.relu(self.pi1(state))
-        v1 = F.relu(self.v1(state))
+        x = F.relu(self.fc1(state))
+        x = F.relu(self.fc2(x))
 
-        pi = self.pi(pi1)
-        v = self.v(v1)
+        pi = self.pi(x)
+        v = self.v(x)
 
         return pi, v
 
@@ -107,17 +116,19 @@ class ActorCritic(nn.Module):
         states = states.view(states.shape[0], -1)
         actions = T.tensor(self.actions, dtype=T.float)
 
-        returns = self.calc_R(done)
 
+        returns = self.calc_R(done)
         pi, values = self.forward(states)
         values = values.squeeze()
-        critic_loss = (returns-values)**2        
+        critic_loss = (returns-values)**2     
+        advantage = returns - values
+        advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)   
 
         probs = T.softmax(pi, dim=1)
         dist = Categorical(probs)
         log_probs = dist.log_prob(actions)
         entropy = dist.entropy()
-        actor_loss = -log_probs*(returns-values) - ENTROPY_SCALAR * entropy
+        actor_loss = -log_probs*(advantage) - ENTROPY_SCALAR * entropy
 
         total_loss = (critic_loss + actor_loss).mean()
     
@@ -126,6 +137,7 @@ class ActorCritic(nn.Module):
     def choose_action(self, observation):
         state = T.tensor(observation["agent_0"], dtype = T.float32) # hanndels dict by selecting only current, handel multiple later
         state = state.view(1, -1) #flattens input array to be one dimension
+        state = state/3
         pi, v = self.forward(state)
         probs = T.softmax(pi, dim=1)
         dist = Categorical(probs)
@@ -147,7 +159,12 @@ class Agent(mp.Process):
         self.data_queue = data_queue
         self.control_queue = control_queue
         self.running = False
+        self.canceled = False
         self.simulation_delay = .2
+        self.lr = LR
+        self.gamma = GAMMA
+        self.entropy = ENTROPY_SCALAR
+        self.t_max = T_MAX
         self.data_queue.put({
             "type": "log",
             "agent": self.name,
@@ -188,6 +205,8 @@ class Agent(mp.Process):
             })
             while not done:
                 self.process_control_queue()
+                if not self.running:
+                    time.sleep(.05)
                 if self.simulation_delay > 0:
                     time.sleep(self.simulation_delay)
                 action = self.local_actor_critic.choose_action(observation) # (for multi agent) change to for each agent
@@ -206,16 +225,17 @@ class Agent(mp.Process):
                 })
                 self.local_actor_critic.remember(observation, actions, reward)
                 if t_step % T_MAX == 0 or done:
-                    loss = self.local_actor_critic.calc_loss(done)
-                    self.optimizer.zero_grad()
-                    loss.backward()
-                    for local_param, global_param in zip(
-                            self.local_actor_critic.parameters(),
-                            self.global_actor_critic.parameters()):
-                        global_param._grad = local_param.grad
-                    self.optimizer.step()
-                    self.local_actor_critic.load_state_dict(
-                            self.global_actor_critic.state_dict())
+                    if not self.canceled:
+                        loss = self.local_actor_critic.calc_loss(done)
+                        self.optimizer.zero_grad()
+                        loss.backward()
+                        for local_param, global_param in zip(
+                                self.local_actor_critic.parameters(),
+                                self.global_actor_critic.parameters()):
+                            global_param._grad = local_param.grad
+                        self.optimizer.step()
+                        self.local_actor_critic.load_state_dict(
+                                self.global_actor_critic.state_dict())
                     self.local_actor_critic.clear_memory()
                 t_step += 1
                 observation = observation_
@@ -223,14 +243,15 @@ class Agent(mp.Process):
                 self.episode_idx.value += 1
             if (PRINT_REWARD):
                 if(PRINT_ACTION):
-                    print()
+                    print() # formatting
                 print(self.name, 'episode', self.episode_idx.value, 'reward %.1f' % score)
             self.data_queue.put({
                 "type": "episode",
                 "agent": self.name,
                 "episode": self.episode_idx.value,
                 "rewards": score,
-                "path": self.path.copy()
+                "path": self.path.copy(),
+                #"loss": loss
             })
 
     def process_control_queue(self):
@@ -248,10 +269,29 @@ class Agent(mp.Process):
 
                 elif cmd["action"] == "reset":
                     self.running = False
+                    self.canceled = True
                     self.episode_idx.value = 0
-                    self.local_actor_critic.clear_memory()
+                    
                 
             # speed control
             elif cmd["type"] == "speed":
                 self.simulation_delay = cmd["value"]
 
+            # paramater control
+            elif cmd["type"] == "param":
+                name = cmd["name"]
+                value = cmd["value"]
+
+                if name == "lr":
+                    for param_group in self.optimizer.param_groups:
+                        param_group['lr'] = value
+
+                elif name == "gamma":
+                    self.local_actor_critic.gamma = value
+
+                elif name == "entropy":
+                    global ENTROPY_SCALAR
+                    ENTROPY_SCALAR = value
+
+                elif name == "t_max":
+                    self.t_max = int(value)
