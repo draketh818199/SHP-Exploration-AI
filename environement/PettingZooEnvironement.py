@@ -10,7 +10,7 @@ from gymnasium import spaces
 # =========================
 # Improvements needed
 # =========================
-# improved reward function
+# test improved reward
 # maybe add continuous movement & ray vision
 # random start location
 
@@ -133,10 +133,10 @@ class env(ParallelEnv):
         old_pos = self.player_pos
         new_pos = (nx, ny)
         terminated = False
-        reward = -0.01
 
         
         obs, new_tiles = self._get_observation()
+        reward = -.5
 
         # bounds check
         if 0 <= nx < self.size and 0 <= ny < self.size:
@@ -151,7 +151,7 @@ class env(ParallelEnv):
                 self.grid[nx][ny] = 2
                 self.player_pos = (nx, ny)
 
-                reward = self._calculate_reward(old_pos, new_pos, new_tiles, terminated)
+                reward += self._calculate_reward(old_pos, new_pos, new_tiles, terminated)
 
         observations = {"agent_0": obs}
         rewards = {"agent_0": reward}
@@ -171,15 +171,14 @@ class env(ParallelEnv):
     #reward calculated by distance to goal
     def _calculate_reward(self, old_pos, new_pos, new_tiles, reached_goal):
 
-        gx, gy = self.goal_pos
-
+        #gx, gy = self.goal_pos
         #old_dist = math.sqrt((old_pos[0] - gx)**2 + (old_pos[1] - gy)**2)
         #new_dist = math.sqrt((new_pos[0] - gx)**2 + (new_pos[1] - gy)**2)
+        reward = -.2
+        
 
-        reward = 0
+        # exploration (maybe remove)
         x, y = self.player_pos
-
-        # exploration
         self.visit_count[x][y] += 1
         intrinsic_reward = 1.0 / np.sqrt(self.visit_count[x][y])
         reward += 0.05 * intrinsic_reward
@@ -190,6 +189,7 @@ class env(ParallelEnv):
         # goal
         if reached_goal:
             reward += 10
+        
 
         return reward
 

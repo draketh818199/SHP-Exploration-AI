@@ -6,11 +6,9 @@
 # Improvements needed
 # =========================
 # change outputs to be a dict of all agents
-# better data display
 # Figure out how to save trained model
 # decide if I want agents to use global or individual actorcritics
-# get visual environment working (maybe another program the just runs saved training)
-# streatch goal - make UI for running / viewing agent
+
 
 
 import torch as T

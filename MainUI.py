@@ -12,11 +12,10 @@ from agentManager import AgentManager
 #--------------------------
 # Add tabs to display - Session path - Live movement - heatMap?
 # add trained model saving and selecting 
-# add training values setting
+# test training values setting
 # save and load training values w/ model
 # add more data & graphs & logs
-# add imediate feedback on start button press
-# change reset button to reset current agent weights
+# better button press feadback (reset, start, etc)
 # add variable run lenght
 # reset reward graph on agent reset
 # find why dashboard is delayed (seems like dataQueue is being prcessed slower than its being added to)
@@ -51,7 +50,7 @@ state = {
 def process_queue(data_queue):
     while not data_queue.empty():
         msg = data_queue.get()
-        agent = "agent_0"
+        agent = msg.get("agent", "agent_0")
 
         if agent not in state["agents"]:
             state["agents"][agent] = {
@@ -82,6 +81,7 @@ def process_queue(data_queue):
         
         elif msg["type"] == "status":
             state["agents"][agent]["status"] = msg["status"]
+
 
 
 #--------------------------
@@ -237,6 +237,28 @@ def update_param(sender, app_data, user_data, manager):
     param_name, manager = user_data
     manager.update_param(param_name, app_data)
 
+def save_callback(sender, app_data, user_data):
+    manager = user_data
+    name = dpg.get_value("save_name")
+    if not name:
+        print("Enter a name")
+        return
+    manager.save_agent(name)
+    # refresh dropdown
+    dpg.configure_item("load_dropdown", items=manager.list_saved_agents())
+
+def load_callback(sender, app_data, user_data):
+    manager = user_data
+    selected = dpg.get_value("load_dropdown")
+    if not selected:
+        print("Select a model")
+        return
+    # IMPORTANT: stop agents before loading
+    manager.stop_all()
+    time.sleep(0.2)
+
+    manager.load_agent(selected)
+
     
 
 # -------------------------
@@ -252,6 +274,16 @@ def setup_ui(manager):
             dpg.add_button(label="Start", callback=start_callback, user_data=manager)
             dpg.add_button(label="Stop", callback=stop_callback, user_data=manager)
             dpg.add_button(label="Reset", callback=reset_callback, user_data=manager)
+            dpg.add_input_text(label="Save Name", tag="save_name", width=150)
+            dpg.add_button(label="Save", callback=save_callback, user_data=manager)
+
+            dpg.add_combo(
+                label="Saved Models",
+                tag="load_dropdown",
+                items=manager.list_saved_agents(),
+                width=150
+            )
+            dpg.add_button(label="Load", callback=load_callback, user_data=manager)
 
         # Main Layout
         with dpg.table(header_row=False, resizable=True):

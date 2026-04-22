@@ -1,6 +1,10 @@
 import torch.multiprocessing as mp
 from multiprocessing import Queue
 from A3C import ActorCritic, Agent, SharedAdam
+import os
+import torch
+
+SAVE_DIR = "saved_agents"
 
 class AgentManager:
     def __init__(self):
@@ -78,9 +82,63 @@ class AgentManager:
     
     def update_param(self, param_name, app_data):
         self.control_queue.put({"type": "param","name": param_name,"value": app_data})
+    
+    # -------------------------
+    # Save Controls
+    # -------------------------
+    
+    def save_agent(self, name):
+        if not name:
+            print("Invalid name")
+            return
+        os.makedirs(SAVE_DIR, exist_ok=True)
+        path = os.path.join(SAVE_DIR, f"{name}.pt")
+
+        checkpoint = {
+            "model_state": self.global_actor_critic.state_dict(),
+            "optimizer_state": self.optimizer.state_dict(),
+            "episode": self.global_ep.value,
+        }
+        torch.save(checkpoint, path)
+        self.data_queue.put({
+            "type": "log",
+            "level": "info",   # info, warning, error
+            "message": "Agent initialized"
+        })
+        self.log(f"Saved: {path}")
+
+
+    def list_saved_agents(self):
+        if not os.path.exists(SAVE_DIR):
+            return []
+        return [f.replace(".pt", "") for f in os.listdir(SAVE_DIR) if f.endswith(".pt")]
+    
+    def load_agent(self, name):
+        path = os.path.join(SAVE_DIR, f"{name}.pt")
+
+        if not os.path.exists(path):
+            self.log("File not found", level="error")
+            return
+
+        checkpoint = torch.load(path)
+        self.init_model()
+        self.global_actor_critic.load_state_dict(checkpoint["model_state"])
+        self.optimizer.load_state_dict(checkpoint["optimizer_state"])
+        self.global_ep.value = checkpoint.get("episode", 0)
+
+        self.log(f"Loaded: {path}")
+
 
     # -------------------------
     # Access data queue
     # -------------------------
     def get_data_queue(self):
         return self.data_queue
+
+    def log(self, message, level="info", agent="manager"):
+        self.data_queue.put({
+            "type": "log",
+            "agent": agent,
+            "level": level,
+            "message": message
+        })
