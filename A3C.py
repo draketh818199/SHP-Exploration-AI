@@ -51,8 +51,13 @@ class SharedAdam(T.optim.Adam):
                 state['exp_avg'].share_memory_()
                 state['exp_avg_sq'].share_memory_()
     
-    def clear_memory(self):
-        self.state = []
+    def reset_optimizer(optimizer):
+        for group in optimizer.param_groups:
+            for p in group['params']:
+                state = optimizer.state[p]
+                state['step'] = 0
+                state['exp_avg'].zero_()
+                state['exp_avg_sq'].zero_()
     
     def load_memory(self, mem):
         self.state = [mem]
@@ -81,6 +86,11 @@ class ActorCritic(nn.Module):
         self.states = []
         self.actions = []
         self.rewards = []
+    
+    def reset_weights(model):
+        for layer in model.children():
+            if hasattr(layer, 'reset_parameters'):
+                layer.reset_parameters()
 
     def forward(self, state):
         x = F.relu(self.fc1(state))
@@ -269,6 +279,8 @@ class Agent(mp.Process):
                     self.running = False
                     self.canceled = True
                     self.episode_idx.value = 0
+                    self.local_actor_critic.clear_memory()
+                    self.local_actor_critic.load_state_dict(self.global_actor_critic.state_dict())
                     
                 
             # speed control

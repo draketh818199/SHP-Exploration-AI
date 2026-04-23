@@ -17,6 +17,7 @@ class AgentManager:
         self.global_ep = None
 
         self.initialized = False
+        self.lr = 1e-4
 
     # -------------------------
     # Initialize shared model
@@ -25,14 +26,14 @@ class AgentManager:
         if self.initialized:
             return
 
-        lr = 1e-4
+
         input_dims = [98]
         n_actions = 4
 
         self.global_actor_critic = ActorCritic(input_dims, n_actions)
         self.global_actor_critic.share_memory()
 
-        self.optimizer = SharedAdam(self.global_actor_critic.parameters(), lr=lr)
+        self.optimizer = SharedAdam(self.global_actor_critic.parameters(), lr=self.lr)
         self.global_ep = mp.Value('i', 0)
 
         self.initialized = True
@@ -74,7 +75,9 @@ class AgentManager:
         self.control_queue.put({"type": "action", "action": "stop"})
 
     def reset_all(self):
-        SharedAdam.clear_memory
+        self.stop_all()
+        ActorCritic.reset_weights(self.global_actor_critic)
+        self.optimizer = SharedAdam(self.global_actor_critic.parameters(), lr=self.lr)
         self.control_queue.put({"type": "action", "action": "reset"})
     
     def speed_control(self, speed):

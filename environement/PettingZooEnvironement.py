@@ -151,7 +151,7 @@ class env(ParallelEnv):
                 self.grid[nx][ny] = 2
                 self.player_pos = (nx, ny)
 
-                reward += self._calculate_reward(old_pos, new_pos, new_tiles, terminated)
+                reward = self._calculate_reward(old_pos, new_pos, new_tiles, terminated)
 
         observations = {"agent_0": obs}
         rewards = {"agent_0": reward}
