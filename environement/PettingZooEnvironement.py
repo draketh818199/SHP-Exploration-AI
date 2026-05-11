@@ -21,7 +21,7 @@ from gymnasium import spaces
 # =========================
 
 RENDER_FPS = 30
-MAX_STEPS = 250
+MAX_STEPS = 1250
 MAP_ID = 15
 
 
