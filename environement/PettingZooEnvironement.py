@@ -174,17 +174,17 @@ class env(ParallelEnv):
         #gx, gy = self.goal_pos
         #old_dist = math.sqrt((old_pos[0] - gx)**2 + (old_pos[1] - gy)**2)
         #new_dist = math.sqrt((new_pos[0] - gx)**2 + (new_pos[1] - gy)**2)
-        reward = -.2
+        reward = -.1
         
 
         # exploration (maybe remove)
-        x, y = self.player_pos
-        self.visit_count[x][y] += 1
-        intrinsic_reward = 1.0 / np.sqrt(self.visit_count[x][y])
-        reward += 0.05 * intrinsic_reward
+        #x, y = self.player_pos
+        #self.visit_count[x][y] += 1
+        #ntrinsic_reward = 1.0 / np.sqrt(self.visit_count[x][y])
+        #reward += 0.05 * intrinsic_reward
 
         # new tiles 
-        reward += 0.02 * new_tiles
+        reward += 0.1 * new_tiles
 
         # goal
         if reached_goal:

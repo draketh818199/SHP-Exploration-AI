@@ -27,7 +27,7 @@ plt.ion() # probably unused
 # Constants
 # =========================
 N_GAMES = 200 # number of rounds
-T_MAX = 50 # number of steps before updating model
+T_MAX = 128 # number of steps before updating model
 ENTROPY_SCALAR = .02 # scales entropy value
 PRINT_ACTION = False # print every action taken
 PRINT_REWARD = True # print rewards and end of round
@@ -104,11 +104,13 @@ class ActorCritic(nn.Module):
     def calc_R(self, done):
         states = T.tensor(self.states, dtype=T.float32)
         states = states.view(states.shape[0], -1)
+        states = states/3
 
-        
+        # looks at previous state
         _, v = self.forward(states)
+        R = v[-1].detach() * (1 - int(done))
+        # looks at next state
 
-        R = v[-1]*(1-int(done))
 
         batch_return = []
         for reward in self.rewards[::-1]:
@@ -122,23 +124,26 @@ class ActorCritic(nn.Module):
     def calc_loss(self, done):
         states = T.tensor(self.states, dtype=T.float)
         states = states.view(states.shape[0], -1)
+        states = states/3
         actions = T.tensor(self.actions, dtype=T.float)
 
 
         returns = self.calc_R(done)
         pi, values = self.forward(states)
-        values = values.squeeze()
-        critic_loss = (returns-values)**2     
+        values = values.squeeze()   
         advantage = returns - values
-        advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)   
+        critic_loss = advantage.pow(2)
+        #advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)   
 
         probs = T.softmax(pi, dim=1)
         dist = Categorical(probs)
         log_probs = dist.log_prob(actions)
         entropy = dist.entropy()
-        actor_loss = -log_probs*(advantage) - ENTROPY_SCALAR * entropy
+        #actor_loss = -log_probs*(advantage) - ENTROPY_SCALAR * entropy
+        actor_loss = -log_probs * advantage.detach()
+        entropy = dist.entropy()
 
-        total_loss = (critic_loss + actor_loss).mean()
+        total_loss = (critic_loss + actor_loss - ENTROPY_SCALAR * entropy).mean()
     
         return total_loss
 
@@ -159,6 +164,7 @@ class Agent(mp.Process):
         super(Agent, self).__init__()
         self.local_actor_critic = ActorCritic(input_dims, n_actions, gamma)
         self.global_actor_critic = global_actor_critic
+        self.local_actor_critic.load_state_dict(self.global_actor_critic.state_dict())
         self.name = 'agent_0'
         self.episode_idx = global_ep_idx
         print("start process")
@@ -235,6 +241,7 @@ class Agent(mp.Process):
                 if t_step % T_MAX == 0 or done:
                     if not self.canceled:
                         loss = self.local_actor_critic.calc_loss(done)
+                        self.local_actor_critic.zero_grad()
                         self.optimizer.zero_grad()
                         loss.backward()
                         for local_param, global_param in zip(

@@ -16,9 +16,10 @@ from agentManager import AgentManager
 # save and load training values w/ model
 # add more data & graphs & logs
 # better button press feadback (reset, start, etc)
-# add variable run lenght
 # reset reward graph on agent reset
 # find why dashboard is delayed (seems like dataQueue is being prcessed slower than its being added to)
+# change speed slider to 4 settings real-time, accelerated, fast, fastest (names may need changing)
+# fix stop button slowing run speed
 
 
 # -------------------------
