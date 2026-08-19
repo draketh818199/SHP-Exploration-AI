@@ -20,6 +20,7 @@ from agentManager import AgentManager
 # find why dashboard is delayed (seems like dataQueue is being prcessed slower than its being added to)
 # change speed slider to 4 settings real-time, accelerated, fast, fastest (names may need changing)
 # fix stop button slowing run speed
+# fix decync when running at high speeds
 
 
 # -------------------------
@@ -60,11 +61,13 @@ def process_queue(data_queue):
                 "grid": None,
                 "logs": [],
                 "status": "idle",
-                "episode": []
+                "episode": [],
+                "action prob": None
             }
 
         if msg["type"] == "step":
             state["agents"][agent]["grid"] = msg["grid"]
+            state["agents"][agent]["action prob"] = msg["action prob"]
 
         elif msg["type"] == "episode":
             state["agents"][agent]["path"] = msg["path"]
@@ -162,6 +165,16 @@ def update_ui(data_queue):
     dpg.set_value("status_text", f"Status: {status}")
     dpg.set_value("episode_text", f"Episode: {episode}")
 
+    # udpate action prob
+    action_prob = state["agents"][agent].get("action prob")
+
+    if action_prob is not None:
+        if len(action_prob) >= 4:
+            dpg.set_value("LeftProb",  f"{action_prob[0]}")
+            dpg.set_value("RightProb", f"{action_prob[1]}")
+            dpg.set_value("UpProb",    f"{action_prob[2]}")
+            dpg.set_value("DownProb",  f"{action_prob[3]}")
+
     # update graphs
     # reward graph
     rewards = state["agents"][agent]["rewards"]
@@ -186,6 +199,8 @@ def update_ui(data_queue):
         padding = 1
         dpg.set_axis_limits("x_axis", xmin, xmax)
         dpg.set_axis_limits("y_axis", ymin - padding, ymax + padding)
+
+    
 
 
 def update_logs(agent):
@@ -343,6 +358,24 @@ def setup_ui(manager):
                                 dpg.add_plot_axis(dpg.mvXAxis, label="Step", tag="x_axis")
                                 with dpg.plot_axis(dpg.mvYAxis, label="Reward", tag="y_axis"):
                                     dpg.add_line_series([], [], tag="reward_series")
+
+                            dpg.add_text("Action probabilities")
+                            with dpg.table(header_row=False, borders_innerH=False, borders_innerV=False):
+                                dpg.add_table_column()
+                                dpg.add_table_column()
+                                with dpg.table_row():
+                                    dpg.add_text("Left:")
+                                    dpg.add_text("0.0000", tag="LeftProb")
+                                with dpg.table_row():
+                                    dpg.add_text("Right:")
+                                    dpg.add_text(tag="RightProb")
+                                with dpg.table_row():
+                                    dpg.add_text("Up:")
+                                    dpg.add_text(tag="UpProb")
+                                with dpg.table_row():
+                                    dpg.add_text("Down:")
+                                    dpg.add_text(tag="DownProb")
+
 
                         # ---- Training Tab ----
                         with dpg.tab(label="Training"):

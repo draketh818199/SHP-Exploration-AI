@@ -156,7 +156,7 @@ class ActorCritic(nn.Module):
         dist = Categorical(probs)
         action = dist.sample().numpy()[0]
 
-        return action
+        return action, probs
 
 class Agent(mp.Process):
     def __init__(self, global_actor_critic, optimizer, input_dims, n_actions, 
@@ -223,7 +223,7 @@ class Agent(mp.Process):
                     time.sleep(.05)
                 if self.simulation_delay > 0:
                     time.sleep(self.simulation_delay)
-                action = self.local_actor_critic.choose_action(observation) # (for multi agent) change to for each agent
+                action, probs = self.local_actor_critic.choose_action(observation) # (for multi agent) change to for each agent
                 actions = {"agent_0": action}
                 if (PRINT_ACTION):
                     print (action, end=" ")
@@ -235,7 +235,8 @@ class Agent(mp.Process):
                     "type": "step",
                     "agent": self.name,
                     "position": self.env.player_pos,
-                    "grid": self.env.grid
+                    "grid": self.env.grid,
+                    "action prob": probs.detach().cpu().tolist()
                 })
                 self.local_actor_critic.remember(observation, actions, reward)
                 if t_step % T_MAX == 0 or done:
@@ -244,6 +245,7 @@ class Agent(mp.Process):
                         self.local_actor_critic.zero_grad()
                         self.optimizer.zero_grad()
                         loss.backward()
+                        T.nn.utils.clip_grad_norm_(self.local_actor_critic.parameters(),40.0)
                         for local_param, global_param in zip(
                                 self.local_actor_critic.parameters(),
                                 self.global_actor_critic.parameters()):
