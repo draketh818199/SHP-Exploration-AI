@@ -183,6 +183,18 @@ def generate_dense_building():
 def create_grid():
     return [[WALL for _ in range(COLS)] for _ in range(ROWS)]
 
+
+def create_empty_map():
+    grid = create_grid()
+
+    for r in range(1, ROWS - 1):
+        for c in range(1, COLS - 1):
+            grid[r][c] = EMPTY
+
+    grid[1][1] = PLAYER
+    grid[5][3] = OBJECTIVE
+    return grid
+
 def carve_room(grid, room):
     r, c, h, w = room
     for i in range(r, r + h):
@@ -324,7 +336,8 @@ if __name__ == "__main__":
     init_db()
 
     print("1: Generate building map")
-    print("2: Delete a map")
+    print("2: Empty Map")
+    print("3: Delete a map")
     choice = input("Select option: ")
 
     if choice == "1":
@@ -338,6 +351,13 @@ if __name__ == "__main__":
             print(row)
 
     elif choice == "2":
+        empty_map = create_empty_map()
+        save_map(empty_map)
+        print("Empty map:")
+        for row in empty_map:
+            print(row)
+
+    elif choice == "3":
         try:
             map_id = int(input("Enter map ID to delete: "))
             delete_map(map_id)

@@ -22,7 +22,7 @@ from gymnasium import spaces
 
 RENDER_FPS = 30
 MAX_STEPS = 1250
-MAP_ID = 15
+MAP_ID = 19
 
 
 get_map = mapReader.load_map(MAP_ID)
@@ -63,7 +63,7 @@ class env(ParallelEnv):
                 low=-1,
                 high=3,
                 shape=(2, view_size, view_size),
-                dtype=np.int8
+                dtype=np.float32
             )
         }
 
@@ -128,7 +128,7 @@ class env(ParallelEnv):
         x, y = self.player_pos
         nx, ny = x + dx, y + dy
         self.visited *= 0.99
-        self.visited[x][y] = 1.0
+        self.visited[nx][ny] = 1.0
 
         old_pos = self.player_pos
         new_pos = (nx, ny)
@@ -136,7 +136,7 @@ class env(ParallelEnv):
 
         
         obs, new_tiles = self._get_observation()
-        reward = -.5
+        reward = -.3
 
         # bounds check
         if 0 <= nx < self.size and 0 <= ny < self.size:
@@ -174,7 +174,22 @@ class env(ParallelEnv):
         #gx, gy = self.goal_pos
         #old_dist = math.sqrt((old_pos[0] - gx)**2 + (old_pos[1] - gy)**2)
         #new_dist = math.sqrt((new_pos[0] - gx)**2 + (new_pos[1] - gy)**2)
-        reward = -.1
+        reward = -.05
+
+        gx, gy = self.goal_pos
+
+        # Distance before and after the movement
+        old_dist = math.sqrt(
+            (old_pos[0] - gx) ** 2 +
+            (old_pos[1] - gy) ** 2
+        )
+
+        new_dist = math.sqrt(
+            (new_pos[0] - gx) ** 2 +
+            (new_pos[1] - gy) ** 2
+        )
+        distance_change = old_dist - new_dist
+        reward += 0.50 * distance_change
         
 
         # exploration (maybe remove)
@@ -184,11 +199,11 @@ class env(ParallelEnv):
         #reward += 0.05 * intrinsic_reward
 
         # new tiles 
-        reward += 0.1 * new_tiles
+        #reward += 0.1 * new_tiles
 
         # goal
         if reached_goal:
-            reward += 10
+            reward += 20
         
 
         return reward
@@ -206,7 +221,7 @@ class env(ParallelEnv):
         view_size = 2 * radius + 1
         new_tiles = 0
 
-        obs = np.full((2, view_size, view_size), -1, dtype=np.int8)
+        obs = np.full((2, view_size, view_size), -1, dtype=np.float32)
 
         for i, r in enumerate(range(px - radius, px + radius + 1)):
             for j, c in enumerate(range(py - radius, py + radius + 1)):

@@ -27,7 +27,7 @@ plt.ion() # probably unused
 # Constants
 # =========================
 N_GAMES = 200 # number of rounds
-T_MAX = 128 # number of steps before updating model
+T_MAX = 256 # number of steps before updating model
 ENTROPY_SCALAR = .02 # scales entropy value
 PRINT_ACTION = False # print every action taken
 PRINT_REWARD = True # print rewards and end of round
@@ -68,8 +68,19 @@ class ActorCritic(nn.Module):
 
         self.gamma = gamma
 
-        self.fc1 = nn.Linear(*input_dims, 128)
-        self.fc2 = nn.Linear(128, 128)
+        self.conv1 = nn.Conv2d(
+            in_channels=2,
+            out_channels=16,
+            kernel_size=3,
+            padding=1
+        )
+        self.conv2 = nn.Conv2d(
+            in_channels=16,
+            out_channels=32,
+            kernel_size=3,
+            padding=1
+        )
+        self.fc1 = nn.Linear(32 * 7 * 7, 128)
         self.pi = nn.Linear(128, n_actions)
         self.v = nn.Linear(128, 1)
 
@@ -93,8 +104,12 @@ class ActorCritic(nn.Module):
                 layer.reset_parameters()
 
     def forward(self, state):
-        x = F.relu(self.fc1(state))
-        x = F.relu(self.fc2(x))
+        x = F.relu(self.conv1(state))
+        x = F.relu(self.conv2(x))
+
+        x = x.view(x.size(0), -1)
+
+        x = F.relu(self.fc1(x))
 
         pi = self.pi(x)
         v = self.v(x)
@@ -102,60 +117,95 @@ class ActorCritic(nn.Module):
         return pi, v
 
     def calc_R(self, done):
-        states = T.tensor(self.states, dtype=T.float32)
-        states = states.view(states.shape[0], -1)
-        states = states/3
-
-        # looks at previous state
-        _, v = self.forward(states)
-        R = v[-1].detach() * (1 - int(done))
-        # looks at next state
-
+        if done:
+            R = T.tensor(0.0)
+        else:
+            next_state = T.tensor(
+                next_state["agent_0"],
+                dtype=T.float32
+            )
+            # (2, 7, 7) -> (1, 2, 7, 7)
+            next_state = next_state.unsqueeze(0)
+            next_state = next_state / 3
+            _, value = self.forward(next_state)
+            R = value.detach().squeeze()
 
         batch_return = []
         for reward in self.rewards[::-1]:
-            R = reward + self.gamma*R
+            R = reward + self.gamma * R
             batch_return.append(R)
         batch_return.reverse()
-        batch_return = T.tensor(batch_return, dtype=T.float)
 
-        return batch_return
+        return T.stack(batch_return)
 
-    def calc_loss(self, done):
-        states = T.tensor(self.states, dtype=T.float)
-        states = states.view(states.shape[0], -1)
-        states = states/3
-        actions = T.tensor(self.actions, dtype=T.float)
-
-
-        returns = self.calc_R(done)
+    def calc_loss(self, next_state, done):
+        # Convert stored observations into a batch
+        states = T.tensor(np.array(self.states), dtype=T.float32)
+        # states shape:
+        # (batch_size, 2, 7, 7)
+        states = states / 3
+        actions = T.tensor(self.actions, dtype=T.int64)
+        # Calculate discounted returns
+        returns = self.calc_R(next_state, done)
+        # Run all states through CNN
         pi, values = self.forward(states)
-        values = values.squeeze()   
+        values = values.squeeze()
+        # Advantage
         advantage = returns - values
-        critic_loss = advantage.pow(2)
-        #advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)   
+        # Critic loss
+        critic_loss = advantage.pow(2).mean()
+        # Normalize advantage for actor
+        actor_advantage = (
+            advantage - advantage.mean()
+        ) / (
+            advantage.std() + 1e-8
+        )
 
+        # Actor
         probs = T.softmax(pi, dim=1)
+
         dist = Categorical(probs)
+
         log_probs = dist.log_prob(actions)
-        entropy = dist.entropy()
-        #actor_loss = -log_probs*(advantage) - ENTROPY_SCALAR * entropy
-        actor_loss = -log_probs * advantage.detach()
+
         entropy = dist.entropy()
 
-        total_loss = (critic_loss + actor_loss - ENTROPY_SCALAR * entropy).mean()
-    
+        actor_loss = (
+            -log_probs * actor_advantage.detach()
+        ).mean()
+
+        # Total loss
+        total_loss = (
+            critic_loss
+            + actor_loss
+            - ENTROPY_SCALAR * entropy.mean()
+        )
+
         return total_loss
 
-    def choose_action(self, observation):
-        state = T.tensor(observation["agent_0"], dtype = T.float32) # hanndels dict by selecting only current, handel multiple later
-        state = state.view(1, -1) #flattens input array to be one dimension
-        state = state/3
-        pi, v = self.forward(state)
-        probs = T.softmax(pi, dim=1)
-        dist = Categorical(probs)
-        action = dist.sample().numpy()[0]
 
+        print("RETURNS:", returns.mean().item(), returns.min().item(), returns.max().item())
+        print("VALUES:", values.mean().item(), values.min().item(), values.max().item())
+        print("ADVANTAGE:", advantage.mean().item(), advantage.min().item(), advantage.max().item())
+        print("ENTROPY:", entropy.mean().item())
+    def choose_action(self, observation):
+        state = T.tensor(
+        observation["agent_0"],
+        dtype=T.float32
+        )
+        # Add batch dimension
+        # (2, 7, 7) -> (1, 2, 7, 7)
+        state = state.unsqueeze(0)
+
+        state = state / 3
+
+        pi, v = self.forward(state)
+
+        probs = T.softmax(pi, dim=1)
+
+        dist = Categorical(probs)
+
+        action = dist.sample().item()
         return action, probs
 
 class Agent(mp.Process):

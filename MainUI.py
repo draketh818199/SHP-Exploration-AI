@@ -18,9 +18,10 @@ from agentManager import AgentManager
 # better button press feadback (reset, start, etc)
 # reset reward graph on agent reset
 # find why dashboard is delayed (seems like dataQueue is being prcessed slower than its being added to)
-# change speed slider to 4 settings real-time, accelerated, fast, fastest (names may need changing)
+# change speed slider to 4 settings real-time, accelerated, fast, fastest (names may need changing)(add flush queue for speed)
 # fix stop button slowing run speed
 # fix decync when running at high speeds
+# get action probability displaying
 
 
 # -------------------------
@@ -167,13 +168,15 @@ def update_ui(data_queue):
 
     # udpate action prob
     action_prob = state["agents"][agent].get("action prob")
+    #print (action_prob)
+    #print (action_prob[0])
 
-    if action_prob is not None:
-        if len(action_prob) >= 4:
-            dpg.set_value("LeftProb",  f"{action_prob[0]}")
-            dpg.set_value("RightProb", f"{action_prob[1]}")
-            dpg.set_value("UpProb",    f"{action_prob[2]}")
-            dpg.set_value("DownProb",  f"{action_prob[3]}")
+    #if action_prob is not None:
+    #    if len(action_prob) >= 4:
+    #        dpg.set_value("LeftProb",  f"{action_prob[0]}")
+    #        dpg.set_value("RightProb", f"{action_prob[1]}")
+    #        dpg.set_value("UpProb",    f"{action_prob[2]}")
+    #        dpg.set_value("DownProb",  f"{action_prob[3]}")
 
     # update graphs
     # reward graph
