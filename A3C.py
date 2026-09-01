@@ -105,38 +105,35 @@ class ActorCritic(nn.Module):
 
     def forward(self, state):
         x = F.relu(self.conv1(state))
+        x = F.relu(x)
         x = F.relu(self.conv2(x))
-
+        x = F.relu(x)
         x = x.view(x.size(0), -1)
-
-        x = F.relu(self.fc1(x))
+        x = self.fc1(x)
+        x = F.relu(x)
 
         pi = self.pi(x)
         v = self.v(x)
 
+
         return pi, v
 
-    def calc_R(self, done):
-        if done:
-            R = T.tensor(0.0)
-        else:
-            next_state = T.tensor(
-                next_state["agent_0"],
-                dtype=T.float32
-            )
-            # (2, 7, 7) -> (1, 2, 7, 7)
-            next_state = next_state.unsqueeze(0)
-            next_state = next_state / 3
-            _, value = self.forward(next_state)
-            R = value.detach().squeeze()
+    def calc_R(self, next_state, done):
+
+        R = T.tensor(0.0)
 
         batch_return = []
+
         for reward in self.rewards[::-1]:
+
             R = reward + self.gamma * R
+
             batch_return.append(R)
+
         batch_return.reverse()
 
         return T.stack(batch_return)
+        
 
     def calc_loss(self, next_state, done):
         # Convert stored observations into a batch
@@ -198,8 +195,13 @@ class ActorCritic(nn.Module):
         state = state.unsqueeze(0)
 
         state = state / 3
+        for name, param in self.named_parameters():
+            if not T.isfinite(param).all():
+                print("BAD PARAMETER:", name)
+                print(param)
 
         pi, v = self.forward(state)
+
 
         probs = T.softmax(pi, dim=1)
 
@@ -273,6 +275,15 @@ class Agent(mp.Process):
                     time.sleep(.05)
                 if self.simulation_delay > 0:
                     time.sleep(self.simulation_delay)
+
+                for name, param in self.local_actor_critic.named_parameters():
+                    if not T.isfinite(param).all():
+                        print("BAD LOCAL PARAMETER:", name)
+
+                for name, param in self.global_actor_critic.named_parameters():
+                    if not T.isfinite(param).all():
+                        print("BAD GLOBAL PARAMETER:", name)
+
                 action, probs = self.local_actor_critic.choose_action(observation) # (for multi agent) change to for each agent
                 actions = {"agent_0": action}
                 if (PRINT_ACTION):
@@ -291,7 +302,7 @@ class Agent(mp.Process):
                 self.local_actor_critic.remember(observation, actions, reward)
                 if t_step % T_MAX == 0 or done:
                     if not self.canceled:
-                        loss = self.local_actor_critic.calc_loss(done)
+                        loss = self.local_actor_critic.calc_loss(observation_, done)
                         self.local_actor_critic.zero_grad()
                         self.optimizer.zero_grad()
                         loss.backward()
