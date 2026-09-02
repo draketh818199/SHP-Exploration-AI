@@ -21,7 +21,17 @@ import matplotlib.pyplot as plt
 from multiprocessing import Queue
 import time
 import numpy as np
+import random
 plt.ion() # probably unused
+
+#==========================
+# Set seed for debuging
+#==========================
+SEED = 44
+random.seed(SEED)
+np.random.seed(SEED)
+T.manual_seed(SEED)
+
 
 # =========================
 # Constants
@@ -119,19 +129,12 @@ class ActorCritic(nn.Module):
         return pi, v
 
     def calc_R(self, next_state, done):
-
         R = T.tensor(0.0)
-
         batch_return = []
-
         for reward in self.rewards[::-1]:
-
             R = reward + self.gamma * R
-
             batch_return.append(R)
-
         batch_return.reverse()
-
         return T.stack(batch_return)
         
 
@@ -152,11 +155,14 @@ class ActorCritic(nn.Module):
         # Critic loss
         critic_loss = advantage.pow(2).mean()
         # Normalize advantage for actor
-        actor_advantage = (
-            advantage - advantage.mean()
-        ) / (
-            advantage.std() + 1e-8
-        )
+        if advantage.numel() > 1:
+            actor_advantage = (
+                advantage - advantage.mean()
+            ) / (
+                advantage.std(unbiased=False) + 1e-8
+            )
+        else:
+            actor_advantage = advantage
 
         # Actor
         probs = T.softmax(pi, dim=1)
@@ -177,14 +183,9 @@ class ActorCritic(nn.Module):
             + actor_loss
             - ENTROPY_SCALAR * entropy.mean()
         )
-
+    
         return total_loss
 
-
-        print("RETURNS:", returns.mean().item(), returns.min().item(), returns.max().item())
-        print("VALUES:", values.mean().item(), values.min().item(), values.max().item())
-        print("ADVANTAGE:", advantage.mean().item(), advantage.min().item(), advantage.max().item())
-        print("ENTROPY:", entropy.mean().item())
     def choose_action(self, observation):
         state = T.tensor(
         observation["agent_0"],
@@ -195,11 +196,6 @@ class ActorCritic(nn.Module):
         state = state.unsqueeze(0)
 
         state = state / 3
-        for name, param in self.named_parameters():
-            if not T.isfinite(param).all():
-                print("BAD PARAMETER:", name)
-                print(param)
-
         pi, v = self.forward(state)
 
 
@@ -275,15 +271,6 @@ class Agent(mp.Process):
                     time.sleep(.05)
                 if self.simulation_delay > 0:
                     time.sleep(self.simulation_delay)
-
-                for name, param in self.local_actor_critic.named_parameters():
-                    if not T.isfinite(param).all():
-                        print("BAD LOCAL PARAMETER:", name)
-
-                for name, param in self.global_actor_critic.named_parameters():
-                    if not T.isfinite(param).all():
-                        print("BAD GLOBAL PARAMETER:", name)
-
                 action, probs = self.local_actor_critic.choose_action(observation) # (for multi agent) change to for each agent
                 actions = {"agent_0": action}
                 if (PRINT_ACTION):

@@ -127,15 +127,15 @@ class env(ParallelEnv):
         dx, dy = dx_dy[action]
         x, y = self.player_pos
         nx, ny = x + dx, y + dy
+        
         self.visited *= 0.99
         self.visited[nx][ny] = 1.0
 
         old_pos = self.player_pos
-        new_pos = (nx, ny)
+        new_pos = old_pos
         terminated = False
 
         
-        obs, new_tiles = self._get_observation()
         reward = -.3
 
         # bounds check
@@ -149,9 +149,12 @@ class env(ParallelEnv):
 
                 self.grid[x][y] = 0
                 self.grid[nx][ny] = 2
-                self.player_pos = (nx, ny)
+                self.player_pos = new_pos
 
-                reward = self._calculate_reward(old_pos, new_pos, new_tiles, terminated)
+                
+
+        obs, new_tiles = self._get_observation()
+        reward = self._calculate_reward(old_pos, new_pos, new_tiles, terminated)
 
         observations = {"agent_0": obs}
         rewards = {"agent_0": reward}
