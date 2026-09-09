@@ -161,6 +161,7 @@ class ActorCritic(nn.Module):
         # Normalize advantage for actor
         if advantage.numel() > 1:
             actor_advantage = (advantage - advantage.mean()) / (advantage.std(unbiased=False) + 1e-8)
+            print(">1 advantage")
         else:
             actor_advantage = advantage
 
@@ -178,10 +179,12 @@ class ActorCritic(nn.Module):
         # Total loss
         total_loss = (critic_loss + actor_loss - ENTROPY_SCALAR * entropy.mean())
 
-
+        print("ACTOR_ADVANTAGE:", actor_advantage.detach().numpy())
         print("PI:", pi.detach().numpy())
         print("ACTOR LOSS:", actor_loss.item())
-        print("ADVANTAGE:", actor_advantage.detach().numpy())
+        print("ENTROPY: ", entropy.mean())
+        print("CRITIC LOSS:", critic_loss.mean())
+        print("TOTAL LOSS:", total_loss.mean())
 
     
         return total_loss
