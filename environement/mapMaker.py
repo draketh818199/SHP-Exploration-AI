@@ -106,7 +106,7 @@ class Leaf:
 
 
 def generate_dense_building():
-    grid = create_grid()
+    grid = create_grid(COLS, ROWS)
 
     inner_h = ROWS - 2
     inner_w = COLS - 2
@@ -180,15 +180,15 @@ def generate_dense_building():
     return grid
 
 
-def create_grid():
-    return [[WALL for _ in range(COLS)] for _ in range(ROWS)]
+def create_grid(cols, rows):
+    return [[WALL for _ in range(cols)] for _ in range(rows)]
 
 
-def create_empty_map():
-    grid = create_grid()
+def create_empty_map(cols, rows):
+    grid = create_grid(cols, rows)
 
-    for r in range(1, ROWS - 1):
-        for c in range(1, COLS - 1):
+    for r in range(1, rows - 1):
+        for c in range(1, cols - 1):
             grid[r][c] = EMPTY
 
     grid[1][1] = PLAYER
@@ -244,7 +244,7 @@ def generate_building():
 
 
 def generate_bsp_building():
-    grid = create_grid()
+    grid = create_grid(COLS, ROWS)
 
     root = Leaf(1, 1, ROWS - 2, COLS - 2)
     leaves = create_bsp_tree(root)
@@ -351,7 +351,7 @@ if __name__ == "__main__":
             print(row)
 
     elif choice == "2":
-        empty_map = create_empty_map()
+        empty_map = create_empty_map(7, 7)
         save_map(empty_map)
         print("Empty map:")
         for row in empty_map:

@@ -29,7 +29,7 @@ from agentManager import AgentManager
 # -------------------------
 draw_width = 800
 draw_height = 500
-lr = 1e-3
+lr = 1e-1
 gamma = .99
 entropy_scaler = .01
 t_max = 50
@@ -392,7 +392,7 @@ def setup_ui(manager):
 
                             dpg.add_input_float(
                                 label="Learning Rate",
-                                default_value=1e-3,
+                                default_value=1e-1,
                                 callback=update_param,
                                 user_data=("lr", manager)
                             )

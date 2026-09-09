@@ -41,7 +41,7 @@ T_MAX = 256 # number of steps before updating model
 ENTROPY_SCALAR = .02 # scales entropy value
 PRINT_ACTION = False # print every action taken
 PRINT_REWARD = True # print rewards and end of round
-LR = 1e-3
+LR = 1e-1
 GAMMA = .99
 
 
@@ -115,9 +115,7 @@ class ActorCritic(nn.Module):
 
     def forward(self, state):
         x = F.relu(self.conv1(state))
-        x = F.relu(x)
         x = F.relu(self.conv2(x))
-        x = F.relu(x)
         x = x.view(x.size(0), -1)
         x = self.fc1(x)
         x = F.relu(x)
@@ -129,21 +127,27 @@ class ActorCritic(nn.Module):
         return pi, v
 
     def calc_R(self, next_state, done):
-        R = T.tensor(0.0)
+        if done:
+            R = T.tensor(0.0)
+        else:
+            state = T.tensor(next_state["agent_0"],dtype=T.float32).unsqueeze(0) 
+            with T.no_grad():
+                _, value = self(state)
+            R = value.squeeze()
         batch_return = []
         for reward in self.rewards[::-1]:
             R = reward + self.gamma * R
             batch_return.append(R)
         batch_return.reverse()
         return T.stack(batch_return)
-        
+            
 
     def calc_loss(self, next_state, done):
         # Convert stored observations into a batch
         states = T.tensor(np.array(self.states), dtype=T.float32)
         # states shape:
         # (batch_size, 2, 7, 7)
-        states = states / 3
+        #states = states / 3
         actions = T.tensor(self.actions, dtype=T.int64)
         # Calculate discounted returns
         returns = self.calc_R(next_state, done)
@@ -156,11 +160,7 @@ class ActorCritic(nn.Module):
         critic_loss = advantage.pow(2).mean()
         # Normalize advantage for actor
         if advantage.numel() > 1:
-            actor_advantage = (
-                advantage - advantage.mean()
-            ) / (
-                advantage.std(unbiased=False) + 1e-8
-            )
+            actor_advantage = (advantage - advantage.mean()) / (advantage.std(unbiased=False) + 1e-8)
         else:
             actor_advantage = advantage
 
@@ -173,16 +173,16 @@ class ActorCritic(nn.Module):
 
         entropy = dist.entropy()
 
-        actor_loss = (
-            -log_probs * actor_advantage.detach()
-        ).mean()
+        actor_loss = (-log_probs * actor_advantage.detach()).mean()
 
         # Total loss
-        total_loss = (
-            critic_loss
-            + actor_loss
-            - ENTROPY_SCALAR * entropy.mean()
-        )
+        total_loss = (critic_loss + actor_loss - ENTROPY_SCALAR * entropy.mean())
+
+
+        print("PI:", pi.detach().numpy())
+        print("ACTOR LOSS:", actor_loss.item())
+        print("ADVANTAGE:", actor_advantage.detach().numpy())
+
     
         return total_loss
 
@@ -195,7 +195,7 @@ class ActorCritic(nn.Module):
         # (2, 7, 7) -> (1, 2, 7, 7)
         state = state.unsqueeze(0)
 
-        state = state / 3
+        #state = state / 3
         pi, v = self.forward(state)
 
 
@@ -254,6 +254,7 @@ class Agent(mp.Process):
                 })
                 continue
             observation, reward, terminated, truncated, info = self.env.reset()
+            
             score = 0
             self.local_actor_critic.clear_memory()
             terminated = False
@@ -298,7 +299,19 @@ class Agent(mp.Process):
                                 self.local_actor_critic.parameters(),
                                 self.global_actor_critic.parameters()):
                             global_param._grad = local_param.grad
+
+                        print("VALUE GRAD:",self.local_actor_critic.v.weight.grad.abs().mean().item())
+                        old_value = self.global_actor_critic.v.weight.detach().clone()
+
                         self.optimizer.step()
+                                                
+                        new_value = self.global_actor_critic.v.weight.detach().clone()
+                        print(
+                            "GLOBAL VALUE HEAD CHANGE:",
+                            (new_value - old_value).abs().mean().item()
+                        )
+                        self.local_actor_critic.load_state_dict(self.global_actor_critic.state_dict())
+
                         self.local_actor_critic.load_state_dict(
                                 self.global_actor_critic.state_dict())
                     self.local_actor_critic.clear_memory()
@@ -328,6 +341,7 @@ class Agent(mp.Process):
             if cmd["type"] == "action":
                 if cmd["action"] == "start":
                     self.running = True
+                    self.canceled = False
 
                 elif cmd["action"] == "stop":
                     self.running = False
