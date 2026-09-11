@@ -179,8 +179,11 @@ class ActorCritic(nn.Module):
         # Total loss
         total_loss = (critic_loss + actor_loss - ENTROPY_SCALAR * entropy.mean())
 
-        print("ACTOR_ADVANTAGE:", actor_advantage.detach().numpy())
-        print("PI:", pi.detach().numpy())
+        #print("ACTOR_ADVANTAGE:", actor_advantage.detach().numpy())
+        #print("ADVANTAGE:", advantage.detach().numpy())
+        #print("PI:", pi.detach().numpy())
+        print("RETURNS: ", returns.detach().numpy())
+        print("VALUES: ", values.detach().numpy())
         print("ACTOR LOSS:", actor_loss.item())
         print("ENTROPY: ", entropy.mean())
         print("CRITIC LOSS:", critic_loss.mean())
