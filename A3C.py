@@ -91,14 +91,24 @@ class ActorCritic(nn.Module):
             padding=1
         )
         self.fc1 = nn.Linear(32 * 7 * 7, 128)
+
+        self.gru = nn.GRU(
+            input_size=128,
+            hidden_size=128,
+            batch_first=True
+        )
+
         self.pi = nn.Linear(128, n_actions)
         self.v = nn.Linear(128, 1)
+        self.start_hidden = None
 
         self.rewards = []
         self.actions = []
         self.states = []
 
-    def remember(self, state, action, reward):
+    def remember(self, state, action, reward, hidden):
+        if len(self.states) == 0:
+            self.start_hidden = hidden.detach().clone()
         self.states.append(state["agent_0"].astype(np.float32)) # this will need large changes to handel multi agent
         self.actions.append(action["agent_0"])
         self.rewards.append(reward["agent_0"])
@@ -107,33 +117,43 @@ class ActorCritic(nn.Module):
         self.states = []
         self.actions = []
         self.rewards = []
+        self.start_hidden = None
     
     def reset_weights(model):
         for layer in model.children():
             if hasattr(layer, 'reset_parameters'):
                 layer.reset_parameters()
 
-    def forward(self, state):
+    def init_hidden(self):
+        return T.zeros(1,1,128)
+
+    def forward(self, state, hidden = None):
         x = F.relu(self.conv1(state))
         x = F.relu(self.conv2(x))
         x = x.view(x.size(0), -1)
         x = self.fc1(x)
+        
+        x = x.unsqueeze(1)
+        x, hidden = self.gru(x, hidden)
+        x = x.squeeze(1)
+
         x = F.relu(x)
 
         pi = self.pi(x)
         v = self.v(x)
 
 
-        return pi, v
+        return pi, v, hidden
 
-    def calc_R(self, next_state, done):
+    def calc_R(self, next_state, done, hidden):
         if done:
             R = T.tensor(0.0)
         else:
             state = T.tensor(next_state["agent_0"],dtype=T.float32).unsqueeze(0) 
             with T.no_grad():
-                _, value = self(state)
+                _, value, _ = self.forward(state, hidden)
             R = value.squeeze()
+
         batch_return = []
         for reward in self.rewards[::-1]:
             R = reward + self.gamma * R
@@ -142,75 +162,68 @@ class ActorCritic(nn.Module):
         return T.stack(batch_return)
             
 
-    def calc_loss(self, next_state, done):
-        # Convert stored observations into a batch
+    def calc_loss(self, next_state, done, hidden):
         states = T.tensor(np.array(self.states), dtype=T.float32)
-        # states shape:
-        # (batch_size, 2, 7, 7)
-        #states = states / 3
         actions = T.tensor(self.actions, dtype=T.int64)
-        # Calculate discounted returns
-        returns = self.calc_R(next_state, done)
-        # Run all states through CNN
-        pi, values = self.forward(states)
-        values = values.squeeze()
-        # Advantage
+        hidden = self.start_hidden
+        returns = self.calc_R(next_state, done, hidden)
+
+
+        logits = []
+        values = []
+        for state in states:
+
+            state = state.unsqueeze(0)
+
+            pi, value, current_hidden = self.forward(
+                state,
+                hidden
+            )
+
+            logits.append(pi)
+            values.append(value)
+
+        pi = T.cat(logits, dim=0)
+        values = T.cat(values, dim=0).squeeze()
         advantage = returns - values
-        # Critic loss
         critic_loss = advantage.pow(2).mean()
-        # Normalize advantage for actor
         if advantage.numel() > 1:
             actor_advantage = (advantage - advantage.mean()) / (advantage.std(unbiased=False) + 1e-8)
-            print(">1 advantage")
         else:
             actor_advantage = advantage
 
-        # Actor
         probs = T.softmax(pi, dim=1)
-
         dist = Categorical(probs)
-
         log_probs = dist.log_prob(actions)
-
         entropy = dist.entropy()
-
         actor_loss = (-log_probs * actor_advantage.detach()).mean()
 
-        # Total loss
         total_loss = (critic_loss + actor_loss - ENTROPY_SCALAR * entropy.mean())
 
         #print("ACTOR_ADVANTAGE:", actor_advantage.detach().numpy())
         #print("ADVANTAGE:", advantage.detach().numpy())
         #print("PI:", pi.detach().numpy())
-        print("RETURNS: ", returns.detach().numpy())
-        print("VALUES: ", values.detach().numpy())
-        print("ACTOR LOSS:", actor_loss.item())
-        print("ENTROPY: ", entropy.mean())
-        print("CRITIC LOSS:", critic_loss.mean())
-        print("TOTAL LOSS:", total_loss.mean())
+        #print("RETURNS: ", returns.detach().numpy())
+        #print("VALUES: ", values.detach().numpy())
+        #print("ACTOR LOSS:", actor_loss.item())
+        #print("ENTROPY: ", entropy.mean())
+        #print("CRITIC LOSS:", critic_loss.mean())
+        #print("TOTAL LOSS:", total_loss.mean())
 
     
         return total_loss
 
-    def choose_action(self, observation):
-        state = T.tensor(
-        observation["agent_0"],
-        dtype=T.float32
-        )
-        # Add batch dimension
-        # (2, 7, 7) -> (1, 2, 7, 7)
+    def choose_action(self, observation, hidden):
+        state = T.tensor(observation["agent_0"], dtype=T.float32)
         state = state.unsqueeze(0)
-
-        #state = state / 3
-        pi, v = self.forward(state)
-
+        # Add batch dimension
+        with T.no_grad():
+            pi, v, hidden = self.forward(state, hidden)
 
         probs = T.softmax(pi, dim=1)
-
         dist = Categorical(probs)
-
         action = dist.sample().item()
-        return action, probs
+        return action, probs, hidden
 
 class Agent(mp.Process):
     def __init__(self, global_actor_critic, optimizer, input_dims, n_actions, 
@@ -263,6 +276,7 @@ class Agent(mp.Process):
             
             score = 0
             self.local_actor_critic.clear_memory()
+            hidden = self.local_actor_critic.init_hidden()
             terminated = False
             truncated = False
             done = False
@@ -278,7 +292,9 @@ class Agent(mp.Process):
                     time.sleep(.05)
                 if self.simulation_delay > 0:
                     time.sleep(self.simulation_delay)
-                action, probs = self.local_actor_critic.choose_action(observation) # (for multi agent) change to for each agent
+                previous_hidden = hidden.detach().clone()
+
+                action, probs, hidden = self.local_actor_critic.choose_action(observation, hidden) # (for multi agent) change to for each agent
                 actions = {"agent_0": action}
                 if (PRINT_ACTION):
                     print (action, end=" ")
@@ -293,10 +309,10 @@ class Agent(mp.Process):
                     "grid": self.env.grid,
                     "action prob": probs.detach().cpu().tolist()
                 })
-                self.local_actor_critic.remember(observation, actions, reward)
+                self.local_actor_critic.remember(observation, actions, reward, previous_hidden)
                 if t_step % T_MAX == 0 or done:
                     if not self.canceled:
-                        loss = self.local_actor_critic.calc_loss(observation_, done)
+                        loss = self.local_actor_critic.calc_loss(observation_, done, hidden)
                         self.local_actor_critic.zero_grad()
                         self.optimizer.zero_grad()
                         loss.backward()
@@ -318,9 +334,9 @@ class Agent(mp.Process):
                         )
                         self.local_actor_critic.load_state_dict(self.global_actor_critic.state_dict())
 
-                        self.local_actor_critic.load_state_dict(
-                                self.global_actor_critic.state_dict())
                     self.local_actor_critic.clear_memory()
+                    hidden = hidden.detach()
+
                 t_step += 1
                 observation = observation_
             with self.episode_idx.get_lock():

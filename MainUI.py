@@ -22,6 +22,7 @@ from agentManager import AgentManager
 # fix stop button slowing run speed
 # fix decync when running at high speeds
 # get action probability displaying
+# reset graphs on reset
 
 
 # -------------------------

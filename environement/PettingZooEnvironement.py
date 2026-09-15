@@ -22,7 +22,7 @@ from gymnasium import spaces
 
 RENDER_FPS = 30
 MAX_STEPS = 1250
-MAP_ID = 18
+MAP_ID = 14
 
 
 get_map = mapReader.load_map(MAP_ID)
@@ -193,7 +193,7 @@ class env(ParallelEnv):
             (new_pos[1] - gy) ** 2
         )
         distance_change = old_dist - new_dist
-        reward += 0.50 * distance_change
+        reward += 0.70 * distance_change * (20-new_dist)
         
 
         # exploration (maybe remove)
