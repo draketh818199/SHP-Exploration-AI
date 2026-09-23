@@ -35,6 +35,8 @@ gamma = .99
 entropy_scaler = .01
 t_max = 50
 control_queue = Queue()
+show_visualization = True
+current_speed = "Normal"
 state = {
     "agents": {
         "agent_0": {
@@ -148,6 +150,9 @@ def draw_path(agent):
             thickness=2
         )
 
+def toggle_visualization(sender, app_data, user_data):
+    global show_visualization
+    show_visualization = app_data
 
 # -------------------------
 # UI Update
@@ -157,8 +162,13 @@ def update_ui(data_queue):
     process_queue(data_queue)
     agent = "agent_0"
 
+    if not show_visualization:
+        return
     draw_grid(agent)
-    draw_path(agent)
+    if current_speed != "Fast":
+        
+        draw_path(agent)
+
     update_logs(agent)
 
     status = state["agents"][agent]["status"]
@@ -182,7 +192,8 @@ def update_ui(data_queue):
     # update graphs
     # reward graph
     rewards = state["agents"][agent]["rewards"]
-    if rewards:
+    print(len(rewards))
+    if len(rewards) % 20 == 1:
         x = list(range(len(rewards)))
         y = rewards
         dpg.set_value("reward_series", [x, y])
@@ -193,16 +204,16 @@ def update_ui(data_queue):
         dpg.set_axis_limits("y_axis", ymin - padding, ymax + padding)
     
     # loss graph
-    loss = state["agents"][agent]["loss"]
-    if loss:
-        x = list(range(len(rewards)))
-        y = loss
-        dpg.set_value("loss_series", [x, y])
-        xmin, xmax = 0, len(loss)
-        ymin, ymax = min(loss), max(loss)
-        padding = 1
-        dpg.set_axis_limits("x_axis", xmin, xmax)
-        dpg.set_axis_limits("y_axis", ymin - padding, ymax + padding)
+    #loss = state["agents"][agent]["loss"]
+    #if loss:
+    #    x = list(range(len(rewards)))
+     #   y = loss
+     #   dpg.set_value("loss_series", [x, y])
+     #   xmin, xmax = 0, len(loss)
+     #   ymin, ymax = min(loss), max(loss)
+     #   padding = 1
+     #   dpg.set_axis_limits("x_axis", xmin, xmax)
+      #  dpg.set_axis_limits("y_axis", ymin - padding, ymax + padding)
 
     
 
@@ -227,6 +238,18 @@ def update_logs(agent):
 
         dpg.add_text(msg, color=color, parent="log_window")
 
+def reset_graphs():
+    state["agents"]["agent_0"]["rewards"].clear()
+    state["agents"]["agent_0"]["loss"].clear()
+
+    # Clear the displayed reward graph
+    dpg.set_value("reward_series", [[], []])
+    dpg.set_value("loss_series", [[], []])
+
+    # Reset the axes
+    dpg.set_axis_limits("x_axis", 0, 1)
+    dpg.set_axis_limits("y_axis", -1, 1)
+
 # -------------------------
 # Controls
 # -------------------------
@@ -243,14 +266,26 @@ def stop_callback(sender, app_data, user_data):
 def reset_callback(sender, app_data, user_data):
     manager = user_data
     manager.reset_all()
+    reset_graphs()
 
 def update_speed(sender, app_data, user_data):
+    global show_visualization
+    global current_speed
     manager = user_data
-    max_delay = 0.1      # slowest
-    k = 5                # controls curve steepness
-    simulation_delay = max_delay * (math.pow(app_data, k))
-    if simulation_delay < 0.001:
-        simulation_delay = 0.0
+    current_speed = app_data
+    speed_delays = {
+        "Slow": 0.10,
+        "Normal": 0.05,
+        "Fast": 0.01,
+        "Max": 0.00
+    }
+    if app_data =="Max":
+        show_visualization = False
+    else:
+        show_visualization = True
+    simulation_delay = speed_delays[app_data]
+    
+
     manager.speed_control(simulation_delay)
 
 def update_param(sender, app_data, user_data, manager):
@@ -329,15 +364,13 @@ def setup_ui(manager):
                 
                 # ---------------- CENTER PANEL ----------------
                 with dpg.child_window():
-                    dpg.add_text("Simulation Speed")
-                    dpg.add_slider_float(
-                        label="Delay (seconds)",
-                        default_value=1.0,
-                        min_value=0.0,
-                        max_value=1.0,
+                    dpg.add_combo(
+                        label="Speed",
+                        items=["Slow", "Normal", "Fast", "Max"],
+                        default_value="Normal",
                         callback=update_speed,
                         user_data=manager,
-                        tag="speed_slider"
+                        tag="speed_combo"
                     )
 
                     dpg.add_text("Path Visualization")
@@ -437,9 +470,12 @@ def run_ui(data_queue):
     dpg.create_viewport(title='AI Dashboard', width=1200, height=800)
     dpg.setup_dearpygui()
     dpg.show_viewport()
-
+    last_ui_update = 0
     while dpg.is_dearpygui_running():
-        update_ui(data_queue)
+        now = time.time()
+        if now - last_ui_update >= 0.1:
+            update_ui(data_queue)
+            last_ui_update = now
         dpg.render_dearpygui_frame()
 
     dpg.destroy_context()

@@ -17,6 +17,18 @@ def load_map(map_id):
 
     return json.loads(result[0])
 
+def get_all_map_ids():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT id FROM maps")
+
+    ids = [row[0] for row in cursor.fetchall()]
+
+    conn.close()
+
+    return ids
+
 if __name__ == "__main__":
     try:
         i = int(input("Enter map ID: "))

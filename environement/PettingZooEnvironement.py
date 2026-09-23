@@ -2,6 +2,7 @@ import copy
 import math
 import numpy as np
 import pygame
+import random
 from environement import mapReader
 
 from pettingzoo import ParallelEnv
@@ -22,10 +23,6 @@ from gymnasium import spaces
 
 RENDER_FPS = 30
 MAX_STEPS = 1250
-MAP_ID = 14
-
-
-get_map = mapReader.load_map(MAP_ID)
 
 # =========================
 # PETTINGZOO ENVIRONMENT
@@ -48,8 +45,8 @@ class env(ParallelEnv):
         self.vision_radius = vision_radius
         self.render_mode = render_mode
 
-        self.original_map = get_map
-        self.size = len(get_map)
+        self.original_map = None
+        self.size = None
 
         # Actions: up, down, left, right
         self._action_spaces = {
@@ -84,8 +81,14 @@ class env(ParallelEnv):
 
         self.agents = self.possible_agents[:]
         self.step_count = 0
-        self.grid = copy.deepcopy(self.original_map)
 
+        existing_maps = mapReader.get_all_map_ids()
+        map_id = random.choice(existing_maps)
+        self.original_map = mapReader.load_map(map_id)
+
+        print(map_id)
+        self.grid = copy.deepcopy(self.original_map)
+        self.size = len(self.grid)
         self.player_pos = self._find_player_start()
         self.grid[self.player_pos[0]][self.player_pos[1]] = 2
         self.goal_pos = self._find_goal()
@@ -175,27 +178,15 @@ class env(ParallelEnv):
     #reward calculated by distance to goal
     def _calculate_reward(self, old_pos, new_pos, new_tiles, reached_goal):
 
-        #gx, gy = self.goal_pos
-        #old_dist = math.sqrt((old_pos[0] - gx)**2 + (old_pos[1] - gy)**2)
-        #new_dist = math.sqrt((new_pos[0] - gx)**2 + (new_pos[1] - gy)**2)
         reward = -.05
 
+        # distance from goal
         gx, gy = self.goal_pos
-
-        # Distance before and after the movement
-        old_dist = math.sqrt(
-            (old_pos[0] - gx) ** 2 +
-            (old_pos[1] - gy) ** 2
-        )
-
-        new_dist = math.sqrt(
-            (new_pos[0] - gx) ** 2 +
-            (new_pos[1] - gy) ** 2
-        )
+        old_dist = math.sqrt((old_pos[0] - gx)**2 + (old_pos[1] - gy)**2)
+        new_dist = math.sqrt((new_pos[0] - gx)**2 + (new_pos[1] - gy)**2)
         distance_change = old_dist - new_dist
-        reward += 0.70 * distance_change * (20-new_dist)
+        reward += 0.5 * distance_change
         
-
         # exploration (maybe remove)
         #x, y = self.player_pos
         #self.visit_count[x][y] += 1
@@ -203,7 +194,7 @@ class env(ParallelEnv):
         #reward += 0.05 * intrinsic_reward
 
         # new tiles 
-        #reward += 0.1 * new_tiles
+        reward += 0.2 * new_tiles
 
         # goal
         if reached_goal:

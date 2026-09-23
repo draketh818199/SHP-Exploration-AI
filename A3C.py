@@ -8,6 +8,7 @@
 # change outputs to be a dict of all agents
 # Figure out how to save trained model
 # decide if I want agents to use global or individual actorcritics
+# change memory to use less processing time
 
 
 
@@ -127,21 +128,19 @@ class ActorCritic(nn.Module):
     def init_hidden(self):
         return T.zeros(1,1,128)
 
-    def forward(self, state, hidden = None):
-        x = F.relu(self.conv1(state))
+    def forward(self, states, hidden = None):
+        x = F.relu(self.conv1(states))
         x = F.relu(self.conv2(x))
         x = x.view(x.size(0), -1)
         x = self.fc1(x)
         
-        x = x.unsqueeze(1)
+        x = x.unsqueeze(0)
         x, hidden = self.gru(x, hidden)
-        x = x.squeeze(1)
-
+        x = x.squeeze(0)
         x = F.relu(x)
 
         pi = self.pi(x)
         v = self.v(x)
-
 
         return pi, v, hidden
 
@@ -167,24 +166,7 @@ class ActorCritic(nn.Module):
         actions = T.tensor(self.actions, dtype=T.int64)
         hidden = self.start_hidden
         returns = self.calc_R(next_state, done, hidden)
-
-
-        logits = []
-        values = []
-        for state in states:
-
-            state = state.unsqueeze(0)
-
-            pi, value, current_hidden = self.forward(
-                state,
-                hidden
-            )
-
-            logits.append(pi)
-            values.append(value)
-
-        pi = T.cat(logits, dim=0)
-        values = T.cat(values, dim=0).squeeze()
+        pi, values, hidden = self.forward(states,hidden)
         advantage = returns - values
         critic_loss = advantage.pow(2).mean()
         if advantage.numel() > 1:
@@ -322,16 +304,13 @@ class Agent(mp.Process):
                                 self.global_actor_critic.parameters()):
                             global_param._grad = local_param.grad
 
-                        print("VALUE GRAD:",self.local_actor_critic.v.weight.grad.abs().mean().item())
+                        #print("VALUE GRAD:",self.local_actor_critic.v.weight.grad.abs().mean().item())
                         old_value = self.global_actor_critic.v.weight.detach().clone()
 
                         self.optimizer.step()
                                                 
                         new_value = self.global_actor_critic.v.weight.detach().clone()
-                        print(
-                            "GLOBAL VALUE HEAD CHANGE:",
-                            (new_value - old_value).abs().mean().item()
-                        )
+                        #print("GLOBAL VALUE HEAD CHANGE:",(new_value - old_value).abs().mean().item())
                         self.local_actor_critic.load_state_dict(self.global_actor_critic.state_dict())
 
                     self.local_actor_critic.clear_memory()
