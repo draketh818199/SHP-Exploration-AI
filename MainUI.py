@@ -12,17 +12,12 @@ from agentManager import AgentManager
 #--------------------------
 # Add tabs to display - Session path - Live movement - heatMap?
 # add trained model saving and selecting 
-# test training values setting
-# save and load training values w/ model
 # add more data & graphs & logs
 # better button press feadback (reset, start, etc)
-# reset reward graph on agent reset
 # find why dashboard is delayed (seems like dataQueue is being prcessed slower than its being added to)
-# change speed slider to 4 settings real-time, accelerated, fast, fastest (names may need changing)(add flush queue for speed)
+# (add flush queue for speed)
 # fix stop button slowing run speed
-# fix decync when running at high speeds
 # get action probability displaying
-# reset graphs on reset
 
 
 # -------------------------
