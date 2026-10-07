@@ -209,7 +209,8 @@ class ActorCritic(nn.Module):
 
 class Agent(mp.Process):
     def __init__(self, global_actor_critic, optimizer, input_dims, n_actions, 
-                gamma, lr, name, global_ep_idx, env_id, data_queue=None, control_queue=None):
+                gamma, lr, name, global_ep_idx, env_id, data_queue=None, control_queue=None,
+                training_maps=None,testing_maps=None):
         super(Agent, self).__init__()
         self.local_actor_critic = ActorCritic(input_dims, n_actions, gamma)
         self.global_actor_critic = global_actor_critic
@@ -217,7 +218,6 @@ class Agent(mp.Process):
         self.name = 'agent_0'
         self.episode_idx = global_ep_idx
         print("start process")
-        self.env = environement.pettingZooEnvironement.env(render_mode="none")
         self.optimizer = optimizer
         self.data_queue = data_queue
         self.control_queue = control_queue
@@ -228,6 +228,10 @@ class Agent(mp.Process):
         self.gamma = GAMMA
         self.entropy = ENTROPY_SCALAR
         self.t_max = T_MAX
+        self.training_maps = training_maps
+        self.testing_maps = testing_maps
+        self.dataset_mode = "Training"
+        self.env = environement.pettingZooEnvironement.env(render_mode="none", map_ids=self.training_maps)
         self.data_queue.put({
             "type": "log",
             "agent": self.name,
@@ -291,9 +295,10 @@ class Agent(mp.Process):
                     "grid": self.env.grid,
                     "action prob": probs.detach().cpu().tolist()
                 })
-                self.local_actor_critic.remember(observation, actions, reward, previous_hidden)
+                if self.dataset_mode == "Training":
+                    self.local_actor_critic.remember(observation, actions, reward, previous_hidden)
                 if t_step % T_MAX == 0 or done:
-                    if not self.canceled:
+                    if self.dataset_mode == "Training" and not self.canceled:
                         loss = self.local_actor_critic.calc_loss(observation_, done, hidden)
                         self.local_actor_critic.zero_grad()
                         self.optimizer.zero_grad()
@@ -303,19 +308,10 @@ class Agent(mp.Process):
                                 self.local_actor_critic.parameters(),
                                 self.global_actor_critic.parameters()):
                             global_param._grad = local_param.grad
-
-                        #print("VALUE GRAD:",self.local_actor_critic.v.weight.grad.abs().mean().item())
-                        old_value = self.global_actor_critic.v.weight.detach().clone()
-
-                        self.optimizer.step()
-                                                
-                        new_value = self.global_actor_critic.v.weight.detach().clone()
-                        #print("GLOBAL VALUE HEAD CHANGE:",(new_value - old_value).abs().mean().item())
+                        self.optimizer.step()                 
                         self.local_actor_critic.load_state_dict(self.global_actor_critic.state_dict())
-
                     self.local_actor_critic.clear_memory()
                     hidden = hidden.detach()
-
                 t_step += 1
                 observation = observation_
             with self.episode_idx.get_lock():
@@ -377,3 +373,25 @@ class Agent(mp.Process):
 
                 elif name == "t_max":
                     self.t_max = int(value)
+
+            elif cmd["type"] == "dataset":
+                mode = cmd["mode"]
+                if mode == "Training":
+                    self.dataset_mode = "Training"
+                    self.env.map_ids = self.training_maps
+                    self.data_queue.put({
+                        "type": "log",
+                        "agent": self.name,
+                        "level": "info",
+                        "message": "Switched to TRAINING maps"
+                    })
+
+                elif mode == "Testing":
+                    self.dataset_mode = "Testing"
+                    self.env.map_ids = self.testing_maps
+                    self.data_queue.put({
+                        "type": "log",
+                        "agent": self.name,
+                        "level": "info",
+                        "message": "Switched to TESTING maps"
+                    })

@@ -173,7 +173,7 @@ def update_ui(data_queue):
     dpg.set_value("episode_text", f"Episode: {episode}")
 
     # udpate action prob
-    action_prob = state["agents"][agent].get("action prob")
+    #action_prob = state["agents"][agent].get("action prob")
     #print (action_prob)
     #print (action_prob[0])
 
@@ -187,8 +187,8 @@ def update_ui(data_queue):
     # update graphs
     # reward graph
     rewards = state["agents"][agent]["rewards"]
-    print(len(rewards))
-    if len(rewards) % 20 == 1:
+    
+    if len(rewards) >1:
         x = list(range(len(rewards)))
         y = rewards
         dpg.set_value("reward_series", [x, y])
@@ -269,9 +269,9 @@ def update_speed(sender, app_data, user_data):
     manager = user_data
     current_speed = app_data
     speed_delays = {
-        "Slow": 0.10,
-        "Normal": 0.05,
-        "Fast": 0.01,
+        "Slow": 0.08,
+        "Normal": 0.02,
+        "Fast": 0.00,
         "Max": 0.00
     }
     if app_data =="Max":
@@ -286,6 +286,12 @@ def update_speed(sender, app_data, user_data):
 def update_param(sender, app_data, user_data, manager):
     param_name, manager = user_data
     manager.update_param(param_name, app_data)
+
+def update_dataset(sender, app_data, user_data):
+    manager = user_data
+    manager.stop_all()
+    manager.set_dataset_mode(app_data)
+    reset_graphs()
 
 def save_callback(sender, app_data, user_data):
     manager = user_data
@@ -366,6 +372,15 @@ def setup_ui(manager):
                         callback=update_speed,
                         user_data=manager,
                         tag="speed_combo"
+                    )
+
+                    dpg.add_combo(
+                        label="Dataset",
+                        items=["Training", "Testing"],
+                        default_value="Training",
+                        callback=update_dataset,
+                        user_data=manager,
+                        tag="dataset_combo"
                     )
 
                     dpg.add_text("Path Visualization")

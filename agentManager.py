@@ -3,6 +3,8 @@ from multiprocessing import Queue
 from A3C import ActorCritic, Agent, SharedAdam
 import os
 import torch
+import random
+from environement import mapReader
 
 SAVE_DIR = "saved_agents"
 
@@ -18,6 +20,20 @@ class AgentManager:
 
         self.initialized = False
         self.lr = 1e-4
+
+        self.dataset_mode = "Training"
+
+        all_maps = mapReader.get_all_map_ids()
+
+        # Shuffle a copy so the split is random
+        all_maps = all_maps.copy()
+        random.Random(44).shuffle(all_maps)
+
+        # % training
+        split_index = int(len(all_maps) * 0.9)
+
+        self.training_maps = all_maps[:split_index]
+        self.testing_maps = all_maps[split_index:]
 
     # -------------------------
     # Initialize shared model
@@ -45,19 +61,21 @@ class AgentManager:
         self.init_model()
 
         agent_id = f"agent_{len(self.agents)}"
-
+    
         agent = Agent(
-            self.global_actor_critic,
-            self.optimizer,
-            input_dims=[98],
-            n_actions=4,
-            gamma=0.99,
-            lr=1e-4,
-            name=agent_id,
-            global_ep_idx=self.global_ep,
-            env_id=None,
-            data_queue=self.data_queue,
-            control_queue=self.control_queue
+        self.global_actor_critic,
+        self.optimizer,
+        input_dims=[98],
+        n_actions=4,
+        gamma=0.99,
+        lr=1e-4,
+        name=agent_id,
+        global_ep_idx=self.global_ep,
+        env_id=None,
+        data_queue=self.data_queue,
+        control_queue=self.control_queue,
+        training_maps=self.training_maps,
+        testing_maps=self.testing_maps
         )
 
         self.agents.append(agent)
@@ -82,6 +100,15 @@ class AgentManager:
     
     def speed_control(self, speed):
         self.control_queue.put({"type": "speed","value": speed})
+
+    def set_dataset_mode(self, mode):
+        if mode not in ["Training", "Testing"]:
+            return
+        self.dataset_mode = mode
+        self.control_queue.put({
+            "type": "dataset",
+            "mode": mode
+        })
     
     def update_param(self, param_name, app_data):
         self.control_queue.put({"type": "param","name": param_name,"value": app_data})

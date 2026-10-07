@@ -345,10 +345,9 @@ if __name__ == "__main__":
         for i in range (int(ammount)):
             new_map = generate_building()
             save_map(new_map)
-
-        print("Generated map:")
-        for row in new_map:
-            print(row)
+            print("Generated map:")
+            for row in new_map:
+                print(row)
 
     elif choice == "2":
         empty_map = create_empty_map(7, 7)

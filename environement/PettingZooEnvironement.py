@@ -35,7 +35,7 @@ class env(ParallelEnv):
         "name": "GridMapEnv_v0"
     }
 
-    def __init__(self, vision_radius=3, render_mode=None, max_steps = MAX_STEPS):
+    def __init__(self, vision_radius=3, render_mode=None, max_steps = MAX_STEPS, map_ids=None):
 
         # Single agent setup
         self.max_steps = max_steps
@@ -47,6 +47,7 @@ class env(ParallelEnv):
 
         self.original_map = None
         self.size = None
+        self.map_ids = map_ids
 
         # Actions: up, down, left, right
         self._action_spaces = {
@@ -82,8 +83,11 @@ class env(ParallelEnv):
         self.agents = self.possible_agents[:]
         self.step_count = 0
 
-        existing_maps = mapReader.get_all_map_ids()
-        map_id = random.choice(existing_maps)
+        if self.map_ids is None:
+            raise ValueError("No map IDs were provided to the environment")
+
+        map_id = random.choice(self.map_ids)
+
         self.original_map = mapReader.load_map(map_id)
 
         print(map_id)
