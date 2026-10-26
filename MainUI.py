@@ -77,7 +77,7 @@ def process_queue(data_queue):
             state["agents"][agent]["path"] = msg["path"]
             state["agents"][agent]["rewards"].append(msg["rewards"])
             state["agents"][agent]["episode"] = msg["episode"]
-            #state["agents"][agent]["loss"].append(msg["loss"])
+            state["agents"][agent]["loss"].append(msg["loss"])
 
         elif msg["type"] == "log":
             logs = state["agents"][agent]["logs"]
@@ -203,20 +203,20 @@ def update_ui(data_queue):
         xmin, xmax = 0, len(rewards)
         ymin, ymax = min(rewards), max(rewards)
         padding = 1
-        dpg.set_axis_limits("x_axis", xmin, xmax)
-        dpg.set_axis_limits("y_axis", ymin - padding, ymax + padding)
+        dpg.set_axis_limits("reward_x", xmin, xmax)
+        dpg.set_axis_limits("reward_y", ymin - padding, ymax + padding)
     
     # loss graph
-    #loss = state["agents"][agent]["loss"]
-    #if loss:
-    #    x = list(range(len(rewards)))
-     #   y = loss
-     #   dpg.set_value("loss_series", [x, y])
-     #   xmin, xmax = 0, len(loss)
-     #   ymin, ymax = min(loss), max(loss)
-     #   padding = 1
-     #   dpg.set_axis_limits("x_axis", xmin, xmax)
-      #  dpg.set_axis_limits("y_axis", ymin - padding, ymax + padding)
+    loss = state["agents"][agent]["loss"]
+    if loss:
+        x = list(range(len(rewards)))
+        y = loss
+        dpg.set_value("loss_series", [x, y])
+        xmin, xmax = 0, len(loss)
+        ymin, ymax = min(loss), max(loss)
+        padding = 1
+        dpg.set_axis_limits("loss_x", xmin, xmax)
+        dpg.set_axis_limits("loss_y", ymin - padding, ymax + padding)
 
     
 
@@ -411,8 +411,8 @@ def setup_ui(manager):
                             dpg.add_text("Reward Over Time")
 
                             with dpg.plot(height=200):
-                                dpg.add_plot_axis(dpg.mvXAxis, label="Step", tag="x_axis")
-                                with dpg.plot_axis(dpg.mvYAxis, label="Reward", tag="y_axis"):
+                                dpg.add_plot_axis(dpg.mvXAxis, label="Step", tag="reward_x")
+                                with dpg.plot_axis(dpg.mvYAxis, label="Reward", tag="reward_y"):
                                     dpg.add_line_series([], [],label="Episode Reward", tag="reward_series")
                                     dpg.add_line_series([], [],label="20-Episode Average",tag="average_reward_series")
 
@@ -439,8 +439,8 @@ def setup_ui(manager):
                             dpg.add_text("Loss Curve")
 
                             with dpg.plot(height=200):
-                                dpg.add_plot_axis(dpg.mvXAxis, label="Step")
-                                with dpg.plot_axis(dpg.mvYAxis, label="Loss"):
+                                dpg.add_plot_axis(dpg.mvXAxis, label="Step", tag="loss_x")
+                                with dpg.plot_axis(dpg.mvYAxis, label="Loss", tag="loss_y"):
                                     dpg.add_line_series([], [], tag="loss_series")
                             dpg.add_text("Training Parameters")
 

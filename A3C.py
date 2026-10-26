@@ -315,7 +315,7 @@ class Agent(mp.Process):
                 "episode": self.episode_idx.value,
                 "rewards": score,
                 "path": self.path.copy(),
-                #"loss": loss
+                "loss": loss.item()
             })
 
     def process_control_queue(self):
