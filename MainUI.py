@@ -178,16 +178,13 @@ def update_ui(data_queue):
     dpg.set_value("episode_text", f"Episode: {episode}")
 
     # udpate action prob
-    #action_prob = state["agents"][agent].get("action prob")
-    #print (action_prob)
-    #print (action_prob[0])
+    action_prob = state["agents"][agent].get("action prob")
 
-    #if action_prob is not None:
-    #    if len(action_prob) >= 4:
-    #        dpg.set_value("LeftProb",  f"{action_prob[0]}")
-    #        dpg.set_value("RightProb", f"{action_prob[1]}")
-    #        dpg.set_value("UpProb",    f"{action_prob[2]}")
-    #        dpg.set_value("DownProb",  f"{action_prob[3]}")
+    if action_prob is not None and len(action_prob) == 4:
+        dpg.set_value("UpProb",    f"{action_prob[0]:.4f}")
+        dpg.set_value("DownProb",  f"{action_prob[1]:.4f}")
+        dpg.set_value("LeftProb",  f"{action_prob[2]:.4f}")
+        dpg.set_value("RightProb", f"{action_prob[3]:.4f}")
 
     # update graphs
     # reward graph

@@ -7,7 +7,7 @@
 # =========================
 # change outputs to be a dict of all agents
 # Figure out how to save trained model
-# change memory to use less processing time
+# change memory to use less processing
 
 
 
@@ -172,26 +172,12 @@ class ActorCritic(nn.Module):
             actor_advantage = (advantage - advantage.mean()) / (advantage.std(unbiased=False) + 1e-8)
         else:
             actor_advantage = advantage
-
         probs = T.softmax(pi, dim=1)
         dist = Categorical(probs)
         log_probs = dist.log_prob(actions)
         entropy = dist.entropy()
         actor_loss = (-log_probs * actor_advantage.detach()).mean()
-
-        total_loss = (critic_loss + actor_loss - ENTROPY_SCALAR * entropy.mean())
-
-        #print("ACTOR_ADVANTAGE:", actor_advantage.detach().numpy())
-        #print("ADVANTAGE:", advantage.detach().numpy())
-        #print("PI:", pi.detach().numpy())
-        #print("RETURNS: ", returns.detach().numpy())
-        #print("VALUES: ", values.detach().numpy())
-        #print("ACTOR LOSS:", actor_loss.item())
-        #print("ENTROPY: ", entropy.mean())
-        #print("CRITIC LOSS:", critic_loss.mean())
-        #print("TOTAL LOSS:", total_loss.mean())
-
-    
+        total_loss = (critic_loss + actor_loss - ENTROPY_SCALAR * entropy.mean())    
         return total_loss
 
     def choose_action(self, observation, hidden, greedy=False):
@@ -296,7 +282,7 @@ class Agent(mp.Process):
                     "agent": self.name,
                     "position": self.env.player_pos,
                     "grid": self.env.grid,
-                    "action prob": probs.detach().cpu().tolist()
+                    "action prob": probs.squeeze(0).detach().cpu().tolist()
                 })
                 if self.dataset_mode == "Training":
                     self.local_actor_critic.remember(observation, actions, reward, previous_hidden)
