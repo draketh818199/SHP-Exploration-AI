@@ -195,8 +195,14 @@ def update_ui(data_queue):
     
     if len(rewards) >1:
         x = list(range(len(rewards)))
-        y = rewards
-        dpg.set_value("reward_series", [x, y])
+        window_size = 20
+        average_rewards = []
+        for i in range(len(rewards)):
+            start = max(0, i - window_size + 1)
+            window = rewards[start:i + 1]
+            average_rewards.append(sum(window) / len(window))
+        dpg.set_value("reward_series", [x, rewards])
+        dpg.set_value("average_reward_series", [x, average_rewards])
         xmin, xmax = 0, len(rewards)
         ymin, ymax = min(rewards), max(rewards)
         padding = 1
@@ -244,6 +250,7 @@ def reset_graphs():
 
     # Clear the displayed reward graph
     dpg.set_value("reward_series", [[], []])
+    dpg.set_value("average_reward_series", [[], []])
     dpg.set_value("loss_series", [[], []])
 
     # Reset the axes
@@ -409,7 +416,8 @@ def setup_ui(manager):
                             with dpg.plot(height=200):
                                 dpg.add_plot_axis(dpg.mvXAxis, label="Step", tag="x_axis")
                                 with dpg.plot_axis(dpg.mvYAxis, label="Reward", tag="y_axis"):
-                                    dpg.add_line_series([], [], tag="reward_series")
+                                    dpg.add_line_series([], [],label="Episode Reward", tag="reward_series")
+                                    dpg.add_line_series([], [],label="20-Episode Average",tag="average_reward_series")
 
                             dpg.add_text("Action probabilities")
                             with dpg.table(header_row=False, borders_innerH=False, borders_innerV=False):
