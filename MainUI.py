@@ -5,6 +5,7 @@ import threading
 import time
 from multiprocessing import Queue
 from agentManager import AgentManager
+from queue import Empty
 
 
 #--------------------------
@@ -16,8 +17,8 @@ from agentManager import AgentManager
 # better button press feadback (reset, start, etc)
 # find why dashboard is delayed (seems like dataQueue is being prcessed slower than its being added to)
 # (add flush queue for speed)
-# fix stop button slowing run speed
 # get action probability displaying
+# fix testing in fast mode not updating visuals fast enough
 
 
 # -------------------------
@@ -49,8 +50,12 @@ state = {
 
 
 def process_queue(data_queue):
-    while not data_queue.empty():
-        msg = data_queue.get()
+    while True:
+        try:
+            msg = data_queue.get_nowait()
+        except Empty:
+            break
+        
         agent = msg.get("agent", "agent_0")
 
         if agent not in state["agents"]:
@@ -436,7 +441,10 @@ def setup_ui(manager):
 
                             dpg.add_input_float(
                                 label="Learning Rate",
-                                default_value=1e-1,
+                                default_value=1e-4,
+                                step=0.00001,
+                                step_fast=0.0001,
+                                format="%.8f",
                                 callback=update_param,
                                 user_data=("lr", manager)
                             )
@@ -477,7 +485,7 @@ def stop(manager):
     manager.stop_all()
 
 def run_ui(data_queue):
-    dpg.create_viewport(title='AI Dashboard', width=1200, height=800)
+    dpg.create_viewport(title='AI Dashboard', width=1500, height=800)
     dpg.setup_dearpygui()
     dpg.show_viewport()
     last_ui_update = 0

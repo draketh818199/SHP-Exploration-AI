@@ -7,7 +7,6 @@
 # =========================
 # change outputs to be a dict of all agents
 # Figure out how to save trained model
-# decide if I want agents to use global or individual actorcritics
 # change memory to use less processing time
 
 
@@ -195,7 +194,7 @@ class ActorCritic(nn.Module):
     
         return total_loss
 
-    def choose_action(self, observation, hidden):
+    def choose_action(self, observation, hidden, greedy=False):
         state = T.tensor(observation["agent_0"], dtype=T.float32)
         state = state.unsqueeze(0)
         # Add batch dimension
@@ -203,8 +202,11 @@ class ActorCritic(nn.Module):
             pi, v, hidden = self.forward(state, hidden)
 
         probs = T.softmax(pi, dim=1)
-        dist = Categorical(probs)
-        action = dist.sample().item()
+        if greedy:
+            action = T.argmax(probs, dim=1).item()
+        else:
+            dist = Categorical(probs)
+            action = dist.sample().item()
         return action, probs, hidden
 
 class Agent(mp.Process):
@@ -247,17 +249,20 @@ class Agent(mp.Process):
             "message": "Started Agent"
         })
         t_step = 1
+        stopped_message = False
         while True:
             # --- PAUSE ---
             if not self.running:
-                time.sleep(.05)
                 self.process_control_queue()
-                self.data_queue.put({
-                    "type": "status",
-                    "agent": self.name,
-                    "status": "stoped"
-                })
+                if not stopped_message:
+                    self.data_queue.put({
+                        "type": "status",
+                        "agent": self.name,
+                        "status": "stoped"
+                    })
+                    stopped_message = True
                 continue
+            stopped_message = False
             observation, reward, terminated, truncated, info = self.env.reset()
             
             score = 0
@@ -274,13 +279,11 @@ class Agent(mp.Process):
             })
             while not done:
                 self.process_control_queue()
-                if not self.running:
-                    time.sleep(.05)
                 if self.simulation_delay > 0:
                     time.sleep(self.simulation_delay)
                 previous_hidden = hidden.detach().clone()
-
-                action, probs, hidden = self.local_actor_critic.choose_action(observation, hidden) # (for multi agent) change to for each agent
+                greedy = self.dataset_mode == "Testing"
+                action, probs, hidden = self.local_actor_critic.choose_action(observation, hidden, greedy) # (for multi agent) change to for each agent
                 actions = {"agent_0": action}
                 if (PRINT_ACTION):
                     print (action, end=" ")

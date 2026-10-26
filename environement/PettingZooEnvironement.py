@@ -11,7 +11,6 @@ from gymnasium import spaces
 # =========================
 # Improvements needed
 # =========================
-# test improved reward
 # maybe add continuous movement & ray vision
 # random start location
 
