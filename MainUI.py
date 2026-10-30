@@ -13,11 +13,9 @@ from queue import Empty
 #--------------------------
 # Add tabs to display - Session path - Live movement - heatMap?
 # add trained model saving and selecting 
-# add more data & graphs & logs
 # better button press feadback (reset, start, etc)
 # find why dashboard is delayed (seems like dataQueue is being prcessed slower than its being added to)
 # (add flush queue for speed)
-# get action probability displaying
 # fix testing in fast mode not updating visuals fast enough
 
 
@@ -192,7 +190,7 @@ def update_ui(data_queue):
     
     if len(rewards) >1:
         x = list(range(len(rewards)))
-        window_size = 20
+        window_size = 100
         average_rewards = []
         for i in range(len(rewards)):
             start = max(0, i - window_size + 1)
