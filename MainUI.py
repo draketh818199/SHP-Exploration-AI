@@ -6,6 +6,7 @@ import time
 from multiprocessing import Queue
 from agentManager import AgentManager
 from queue import Empty
+import math
 
 
 #--------------------------
@@ -17,6 +18,7 @@ from queue import Empty
 # find why dashboard is delayed (seems like dataQueue is being prcessed slower than its being added to)
 # (add flush queue for speed)
 # fix testing in fast mode not updating visuals fast enough
+# add check box for path layer
 
 
 # -------------------------
@@ -140,13 +142,13 @@ def draw_path(agent):
         x1, y1 = path[i]
         x2, y2 = path[i + 1]
 
-        dpg.draw_line(
-            (y1 * tile_size + tile_size//2, x1 * tile_size + tile_size//2),
-            (y2 * tile_size + tile_size//2, x2 * tile_size + tile_size//2),
-            color = (255, 255, 0),
-            parent="path_layer",
-            thickness=2
-        )
+        #dpg.draw_line(
+        #    (y1 * tile_size + tile_size//2, x1 * tile_size + tile_size//2),
+        #    (y2 * tile_size + tile_size//2, x2 * tile_size + tile_size//2),
+        #    color = (255, 255, 0),
+        #    parent="path_layer",
+        #    thickness=2
+        #)
 
 def toggle_visualization(sender, app_data, user_data):
     global show_visualization
@@ -207,14 +209,16 @@ def update_ui(data_queue):
     # loss graph
     loss = state["agents"][agent]["loss"]
     if loss:
-        x = list(range(len(rewards)))
-        y = loss
-        dpg.set_value("loss_series", [x, y])
-        xmin, xmax = 0, len(loss)
-        ymin, ymax = min(loss), max(loss)
-        padding = 1
-        dpg.set_axis_limits("loss_x", xmin, xmax)
-        dpg.set_axis_limits("loss_y", ymin - padding, ymax + padding)
+        valid_loss = [value for value in loss if value is not None and math.isfinite(value)]
+        if valid_loss:
+            x = list(range(len(valid_loss)))
+            y = valid_loss
+            dpg.set_value("loss_series", [x, y])
+            xmin, xmax = 0, len(valid_loss)
+            ymin, ymax = min(valid_loss), max(valid_loss)
+            padding = 1
+            dpg.set_axis_limits("loss_x", xmin, xmax)
+            dpg.set_axis_limits("loss_y", ymin - padding, ymax + padding)
 
     
 
@@ -249,8 +253,10 @@ def reset_graphs():
     dpg.set_value("loss_series", [[], []])
 
     # Reset the axes
-    dpg.set_axis_limits("x_axis", 0, 1)
-    dpg.set_axis_limits("y_axis", -1, 1)
+    dpg.set_axis_limits("reward_x", 0, 1)
+    dpg.set_axis_limits("reward_y", -1, 1)
+    dpg.set_axis_limits("loss_x", 0, 1)
+    dpg.set_axis_limits("loss_y", -1, 1)
 
 # -------------------------
 # Controls
@@ -396,8 +402,8 @@ def setup_ui(manager):
                         dpg.draw_rectangle((0, 0), (800, 500), fill=(100, 100, 100))
                         with dpg.draw_layer(tag="grid_layer"):
                             pass
-                        with dpg.draw_layer(tag="path_layer"):
-                            pass
+                        #with dpg.draw_layer(tag="path_layer"):
+                            #pass
 
                 # ---------------- RIGHT PANEL ----------------
                 with dpg.child_window():
